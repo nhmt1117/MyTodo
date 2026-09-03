@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>单词悬浮窗</title>
+    <link rel="stylesheet" href="./renderer/float.css">
+  </head>
+  <body>
+    <div class="body no-select">
+      <!-- <h4>📖 背单词</h4> -->
+
+      <p class="word" id="w">loading...</p>
+
+      <p class="exp" id="e"></p>
+
+      <div class="no-drag no-close-dblclick">
+        <button onclick="nextWord()">下一个</button>
+      </div>
+    </div>
+
+    <script src="./renderer/float.js"></script>
+</body>
+</html>

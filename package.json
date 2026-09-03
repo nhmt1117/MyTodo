@@ -1,0 +1,81 @@
+{
+  "name": "mytodo",
+  "version": "1.0.0",
+  "description": "MyTodo 个人待办与循环提醒工具",
+  "main": "main.js",
+  "author": "nhmt",
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "node scripts/check-electron.js",
+    "check:electron": "node scripts/check-electron.js",
+    "verify:release": "node scripts/verify-release.js",
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win nsis",
+    "build:portable": "electron-builder --win portable",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir",
+    "test": "node --test",
+    "check": "node --check main.js && node --check preload.js && node --check src/main/config.js && node --check src/main/storage.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && npm test"
+  },
+  "build": {
+    "appId": "com.nhmt.mytodo",
+    "productName": "MyTodo",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "float.html",
+      "renderer/**/*",
+      "src/**/*",
+      "wordlist.json",
+      "MyTodo.ico",
+      "README.md",
+      "CHANGELOG.md",
+      "V1_RELEASE_CHECKLIST.md",
+      "V1_RELEASE_TEST_REPORT.md",
+      "LICENSE",
+      "!node_modules/.cache",
+      "!dist"
+    ],
+    "asar": true,
+    "win": {
+      "target": "nsis",
+      "icon": "MyTodo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MyTodo"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
+  },
+  "devDependencies": {
+    "archiver": "^8.0.0",
+    "electron": "^44.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "extract-zip": {
+      "yauzl": "3.4.0"
+    }
+  }
+}

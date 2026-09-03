@@ -1,0 +1,55 @@
+* {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        width: 220px;
+        height: 130px;
+        font-family: Microsoft YaHei;
+      }
+      .body {
+        width: 220px;
+        height: 130px;
+        /* rgba 实现半透明背景，最后一位0~1，越小越透明 */
+        /* background:rgba(34,40,49,0.75);
+         color:#eeeeee; */
+        background: rgba(238, 238, 238, 0.75);
+        color: rgba(34, 40, 49);
+        padding: 12px;
+        border-radius: 8px;
+        /* 圆角，透明窗口更好看 */
+        cursor: default;
+      }
+      .no-select {
+        user-select: none;
+        -webkit-user-select: none; /* safari/chrome */
+        -moz-user-select: none; /* firefox */
+        -ms-user-select: none; /* IE */
+      }
+      .no-drag {
+        -webkit-app-region: no-drag;
+      }
+      h4 {
+        font-size: 16px;
+        margin-bottom: 6px;
+        color: #00adb5;
+      }
+      p.word {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+      p.exp {
+        font-size: 13px;
+        color: rgba(34, 40, 49);
+      }
+      button {
+        margin-top: 8px;
+        padding: 2px 8px;
+        border: none;
+        border-radius: 4px;
+        background: #00adb5;
+        color: white;
+        cursor: pointer;
+      }
