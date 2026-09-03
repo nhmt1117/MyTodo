@@ -8,6 +8,7 @@ const {
 } = require("./config");
 
 const APP_ROOT = path.join(__dirname, "..", "..");
+const APP_ICON_PATH = path.join(APP_ROOT, "MyTodo.ico");
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
 
 let mainWindow = null;
@@ -36,7 +37,7 @@ function minimizeMainWindow() {
 }
 
 function createTray() {
-  tray = new Tray(path.join(APP_ROOT, "MyTodo.ico"));
+  tray = new Tray(APP_ICON_PATH);
   const contextMenu = Menu.buildFromTemplate([
     { label: " 打开主窗口 ", click: showMainWindow },
     {
@@ -127,7 +128,7 @@ function createFloatWindow() {
 
   floatWindow = new BrowserWindow({
     title: "单词悬浮窗",
-    icon: path.join(APP_ROOT, "MyTodo.ico"),
+    icon: APP_ICON_PATH,
     width: FLOAT_WIN_SIZE.width,
     height: FLOAT_WIN_SIZE.height,
     show: false,
@@ -215,7 +216,7 @@ function createMainWindow() {
 
   mainWindow = new BrowserWindow({
     title: "MyTodo",
-    icon: path.join(APP_ROOT, "MyTodo.ico"),
+    icon: APP_ICON_PATH,
     width: config.width,
     height: config.height,
     minWidth: 480,
@@ -240,6 +241,7 @@ function createMainWindow() {
     event.preventDefault();
     mainWindow.hide();
   });
+  mainWindow.setIcon(APP_ICON_PATH);
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
   });

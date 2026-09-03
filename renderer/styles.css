@@ -1,15 +1,16 @@
 *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei"}
+html{width:100%;height:100%;background:transparent}
 body{
   width:100vw;
   height:100vh;
-  background:#e2e8f0;
+  background:transparent;
   overflow:hidden;
   color:#334155;
 }
 #app-root{
   width:100%;
   height:100%;
-  border-radius:18px;
+  border-radius:20px;
   overflow:hidden;
   display:flex;
   flex-direction:column;
