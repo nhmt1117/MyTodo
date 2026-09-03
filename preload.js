@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteTodo: (id) => ipcRenderer.invoke("delete-todo", id),
   getFloatConfig: () => ipcRenderer.invoke("get-float-config"),
   setGlobalConfig: (config) => ipcRenderer.invoke("set-global-config", config),
+  getDataLocation: () => ipcRenderer.invoke("get-data-location"),
+  chooseDataLocation: () => ipcRenderer.invoke("choose-data-location"),
   toggleFloatWin: () => ipcRenderer.invoke("toggle-float-win"),
   moveFloatWin: (deltaX, deltaY) => ipcRenderer.invoke("move-float-win", deltaX, deltaY),
   saveFloatWinPosition: () => ipcRenderer.invoke("save-float-win-position"),

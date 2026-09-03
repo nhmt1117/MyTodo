@@ -8,6 +8,8 @@ const Module = require("node:module");
 function loadStore(directory) {
   const modulePath = require.resolve("../src/main/todoStore");
   delete require.cache[modulePath];
+  const dataLocationModulePath = require.resolve("../src/main/dataLocation");
+  delete require.cache[dataLocationModulePath];
   const originalLoad = Module._load;
   Module._load = function load(request, parent, isMain) {
     if (request === "electron") return { app: { getPath: () => directory } };

@@ -330,6 +330,9 @@ select.sort-select{
 .back-top-btn:hover{opacity:1;transform:translateY(-2px)}
 .back-top-btn svg{width:22px;height:22px;fill:#fff}
 .set-item{margin:16px 0;color:#334155;font-size:14px}
+.data-location-row{display:flex;align-items:center;gap:8px;margin-top:7px;max-width:620px}
+.data-location-row input{flex:1;min-width:0;padding:9px 10px;border:1px solid rgba(71,85,105,0.18);border-radius:6px;background:rgba(255,255,255,0.52);color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-location-row .btn{flex:0 0 auto}
 .hidden{display:none!important}
 .tag-overdue{color:#ef4444;font-size:11px;margin-left:6px}
 .tag-done{color:#10b981;font-size:11px;margin-left:6px}

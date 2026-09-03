@@ -1,5 +1,5 @@
 const { app } = require("electron");
-const path = require("path");
+const { getDataFilePath } = require("./dataLocation");
 const { readJsonWithBackup, writeJsonAtomic } = require("./storage");
 
 const defaultConfig = {
@@ -13,7 +13,7 @@ const defaultConfig = {
 let globalConfig = { ...defaultConfig };
 
 function getConfigPath() {
-  return path.join(app.getPath("userData"), "win-config.json");
+  return getDataFilePath("win-config.json");
 }
 
 function normalizeFloatBounds(bounds) {

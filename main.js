@@ -1,5 +1,6 @@
 const { app } = require("electron");
 const { applyAutoStartSetting, loadGlobalConfig } = require("./src/main/config");
+const { initializeDataDirectory } = require("./src/main/dataLocation");
 const { registerIpcHandlers } = require("./src/main/ipc");
 const {
   startReminderScheduler,
@@ -16,6 +17,7 @@ const {
 app.setAppUserModelId("com.nhmt.mytodo");
 
 app.whenReady().then(() => {
+  initializeDataDirectory();
   loadGlobalConfig();
   loadTodoFile();
   applyAutoStartSetting();

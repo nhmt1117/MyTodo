@@ -563,6 +563,29 @@ $("#nextMonth").onclick = async () => {
 function firstDayStrOf(d){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`
 }
+function renderDataLocation(location){
+  const input = $("#dataLocationPath")
+  input.value = location?.directory || ""
+  input.title = input.value
+}
+async function changeDataLocation(){
+  const button = $("#changeDataLocationBtn")
+  button.disabled = true
+  try{
+    const result = await window.electronAPI.chooseDataLocation()
+    if(result.cancelled) return
+    renderDataLocation(result)
+    if(result.cleanupPending?.length){
+      alert(`数据位置已切换，但旧位置仍保留：${result.cleanupPending.join("、")}`)
+    }else if(!result.unchanged){
+      alert("数据存储位置已切换")
+    }
+  }catch(error){
+    alert(`切换数据存储位置失败：${error.message || "请检查目标文件夹"}`)
+  }finally{
+    button.disabled = false
+  }
+}
 async function initApp(){
   const appInfo = await window.electronAPI.getAppInfo()
   $("#appVersion").innerText = `v${appInfo.version}`
@@ -570,6 +593,8 @@ async function initApp(){
   appConfig = cfgRes.config
   $("#weekStartSel").value = String(appConfig.weekStartMon)
   $("#autoStartCheck").checked = !!appConfig.autoStart
+  renderDataLocation(await window.electronAPI.getDataLocation())
+  $("#changeDataLocationBtn").onclick = changeDataLocation
   $("#weekStartSel").onchange = async e=>{
     appConfig.weekStartMon = e.target.value === "true"
     await window.electronAPI.setGlobalConfig({weekStartMon: appConfig.weekStartMon})

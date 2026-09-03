@@ -1,5 +1,5 @@
-const { app } = require("electron");
-const path = require("path");
+const { getDataFilePath } = require("./dataLocation");
+
 const { formatLocalDate, normalizeTime, parseLocalDate } = require("../shared/recurrence");
 const { readJsonWithBackup, writeJsonAtomic } = require("./storage");
 
@@ -10,7 +10,7 @@ const priorityValues = new Set(["low", "mid", "high"]);
 const cycleTypeValues = new Set(["", "daily", "weekly", "monthly"]);
 
 function getTodoFilePath() {
-  return path.join(app.getPath("userData"), "todo-store.json");
+  return getDataFilePath("todo-store.json");
 }
 
 function toText(value) {
