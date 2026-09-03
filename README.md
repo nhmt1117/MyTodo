@@ -34,6 +34,7 @@ Windows 用户运行发布包 `MyTodo Setup 1.0.0.exe` 安装，无需安装 Nod
 install.bat
 ```
 
+安装脚本会显示 npm 的交互式进度条、HTTP 请求耗时和 Electron 下载/验证状态。依赖下载是并行的，npm 不提供可信的总下载速度；只要进度条、`npm http fetch` 或 Electron 下载输出持续变化，安装就在继续。连续 5 分钟没有任何新输出时，再检查网络或镜像连接，避免在正常解压阶段过早关闭终端。
 启动开发版：
 
 ```bat

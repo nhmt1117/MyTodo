@@ -47,7 +47,8 @@ function runScript(t, script, exitCode = 0, failCall = "") {
 test("Windows scripts work outside their directory and return after npm", { skip: process.platform !== "win32" }, (t) => {
   const install = runScript(t, "install.bat");
   assert.equal(install.status, 0, install.stderr + install.stdout);
-  assert.match(install.calls, /^ci/m);
+  assert.match(install.calls, /^ci --no-audit --progress --foreground-scripts --loglevel=http --timing/m);
+  assert.match(install.calls, /run check:electron/);
   assert.match(install.stdout, /\[完成\]/);
   const build = runScript(t, "build.bat");
   assert.equal(build.status, 0, build.stderr + build.stdout);
@@ -66,6 +67,13 @@ test("Windows scripts propagate npm failure", { skip: process.platform !== "win3
     assert.ok(result.calls.trim(), `${script} must actually invoke npm`);
     if (script === "build.bat") assert.doesNotMatch(result.calls, /run build:win/);
   }
+});
+
+test("Windows install script rejects Electron verification failures", { skip: process.platform !== "win32" }, (t) => {
+  const install = runScript(t, "install.bat", 0, "run check:electron");
+  assert.equal(install.status, 1, install.stderr + install.stdout);
+  assert.match(install.calls, /^ci /m);
+  assert.match(install.calls, /run check:electron/);
 });
 
 test("Windows build script rejects packaging and artifact verification failures", { skip: process.platform !== "win32" }, (t) => {

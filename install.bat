@@ -15,19 +15,30 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/2] 配置 Electron 国内镜像
+echo [1/3] 配置 Electron 国内镜像
 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
 
-echo [2/2] 根据锁文件安装依赖
+echo [2/3] 根据锁文件安装依赖
 if exist "package-lock.json" (
-    call npm ci --no-audit
+    echo [信息] npm 进度条、HTTP 请求耗时和 Electron 下载状态会实时显示。
+    call npm ci --no-audit --progress --foreground-scripts --loglevel=http --timing
 ) else (
-    call npm install --no-audit
+    echo [信息] npm 进度条、HTTP 请求耗时和 Electron 下载状态会实时显示。
+    call npm install --no-audit --progress --foreground-scripts --loglevel=http --timing
 )
 if errorlevel 1 (
     echo.
     echo [错误] 依赖安装失败！
+    if not defined MYTODO_NO_PAUSE pause
+    exit /b 1
+)
+
+echo [3/3] 验证 Electron 可执行文件
+call npm run check:electron
+if errorlevel 1 (
+    echo.
+    echo [错误] Electron 验证失败！请重新运行 install.bat
     if not defined MYTODO_NO_PAUSE pause
     exit /b 1
 )
