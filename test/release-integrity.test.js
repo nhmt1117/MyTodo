@@ -47,11 +47,15 @@ test("task deletion requires an explicit renderer confirmation", () => {
   assert.match(renderer, /async function submitDelete\(\)[\s\S]*?electronAPI\.deleteTodo\(taskId\)/);
 });
 
+test("unfinished floating-word entry remains hidden", () => {
+  const index = read("index.html");
+  assert.match(index, /<div class="bottom-btn" hidden onclick="openFloat\(\)" title="单词悬浮窗">/);
+});
 test("main window uses opaque rounded content and the application icon", () => {
   const styles = read("renderer/styles.css");
   const windows = read("src/main/windows.js");
   assert.match(styles, /body\{[\s\S]*?background:transparent;/);
-  assert.match(styles, /#app-root\{[\s\S]*?border-radius:20px;[\s\S]*?clip-path:inset\(0 round 20px\);[\s\S]*?background:#e7edf2;/);
+  assert.match(styles, /#app-root\{[\s\S]*?border-radius:12px;[\s\S]*?clip-path:inset\(0 round 12px\);[\s\S]*?background:#e7edf2;/);
   assert.match(windows, /transparent: true,[\s\S]*?backgroundColor: "#00000000"/);
   assert.match(windows, /const APP_ICON_PATH = path\.join\(APP_ROOT, "MyTodo\.ico"\);/);
   assert.match(windows, /new Tray\(APP_ICON_PATH\)/);

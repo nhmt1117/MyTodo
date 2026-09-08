@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
 
-function loadDataLocation(userDataDirectory, appDataDirectory) {
+function loadDataLocation(userDataDirectory, appDataDirectory, options = {}) {
   const modulePath = require.resolve("../src/main/dataLocation");
   delete require.cache[modulePath];
   const originalLoad = Module._load;
@@ -13,7 +13,13 @@ function loadDataLocation(userDataDirectory, appDataDirectory) {
     if (request === "electron") {
       return {
         app: {
-          getPath: (name) => (name === "userData" ? userDataDirectory : appDataDirectory),
+          isPackaged: !!options.isPackaged,
+          getPath: (name) => {
+            if (name === "userData") return userDataDirectory;
+            if (name === "appData") return appDataDirectory;
+            if (name === "exe") return options.executablePath || process.execPath;
+            throw new Error(`Unexpected Electron path: ${name}`);
+          },
         },
       };
     }
@@ -25,7 +31,6 @@ function loadDataLocation(userDataDirectory, appDataDirectory) {
     Module._load = originalLoad;
   }
 }
-
 test("data location uses Electron's default userData directory initially", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-data-location-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -122,5 +127,68 @@ test("data location migration keeps the source intact when copying fails", (t) =
   assert.equal(fs.existsSync(path.join(sourceDirectory, "todo-store.json")), true);
   assert.equal(fs.existsSync(path.join(sourceDirectory, "win-config.json")), true);
   assert.equal(fs.readdirSync(targetDirectory).length, 0);
+  assert.equal(fs.existsSync(path.join(appDataDirectory, "MyTodo-data-location.json")), false);
+});
+test("packaged builds use a sibling MyTodoData directory and migrate legacy data", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-packaged-data-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const appDataDirectory = path.join(root, "app-data");
+  const legacyDirectory = path.join(appDataDirectory, "MyTodo");
+  const executablePath = path.join(root, "user", "MyTodo", "MyTodo.exe");
+  const expectedDirectory = path.join(root, "user", "MyTodoData");
+  fs.mkdirSync(legacyDirectory, { recursive: true });
+  fs.writeFileSync(path.join(legacyDirectory, "todo-store.json"), '{"list":[{"id":1}]}', "utf8");
+  fs.writeFileSync(path.join(legacyDirectory, "win-config.json"), '{"width":620}', "utf8");
+
+  const dataLocation = loadDataLocation(legacyDirectory, appDataDirectory, {
+    isPackaged: true,
+    executablePath,
+  });
+  assert.equal(dataLocation.getPackagedDataDirectory(executablePath), expectedDirectory);
+  const location = dataLocation.initializeDataDirectory();
+
+  assert.deepEqual(location, {
+    directory: path.resolve(expectedDirectory),
+    defaultDirectory: path.resolve(expectedDirectory),
+    isCustom: false,
+  });
+  assert.equal(fs.existsSync(path.join(legacyDirectory, "todo-store.json")), false);
+  assert.equal(fs.existsSync(path.join(legacyDirectory, "win-config.json")), false);
+  assert.equal(fs.existsSync(path.join(expectedDirectory, "todo-store.json")), true);
+  assert.equal(fs.existsSync(path.join(expectedDirectory, "win-config.json")), true);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(appDataDirectory, "MyTodo-data-location.json"), "utf8")),
+    { directory: path.resolve(expectedDirectory) },
+  );
+});
+test("packaged builds retain legacy data when automatic migration fails", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-packaged-data-failure-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const appDataDirectory = path.join(root, "app-data");
+  const legacyDirectory = path.join(appDataDirectory, "MyTodo");
+  const executablePath = path.join(root, "user", "MyTodo", "MyTodo.exe");
+  const expectedDirectory = path.join(root, "user", "MyTodoData");
+  fs.mkdirSync(legacyDirectory, { recursive: true });
+  fs.writeFileSync(path.join(legacyDirectory, "todo-store.json"), '{"list":[{"id":1}]}', "utf8");
+
+  const dataLocation = loadDataLocation(legacyDirectory, appDataDirectory, {
+    isPackaged: true,
+    executablePath,
+  });
+  const error = t.mock.method(console, "error", () => {});
+  const copy = t.mock.method(fs, "copyFileSync", () => {
+    throw new Error("Simulated copy failure");
+  });
+  const location = dataLocation.initializeDataDirectory();
+  copy.mock.restore();
+  error.mock.restore();
+
+  assert.deepEqual(location, {
+    directory: path.resolve(legacyDirectory),
+    defaultDirectory: path.resolve(expectedDirectory),
+    isCustom: true,
+  });
+  assert.equal(fs.existsSync(path.join(legacyDirectory, "todo-store.json")), true);
+  assert.equal(fs.existsSync(path.join(expectedDirectory, "todo-store.json")), false);
   assert.equal(fs.existsSync(path.join(appDataDirectory, "MyTodo-data-location.json")), false);
 });

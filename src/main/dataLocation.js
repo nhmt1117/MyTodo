@@ -10,6 +10,7 @@ const DATA_FILES = [
   "win-config.json.bak",
 ];
 const LOCATION_FILE_NAME = "MyTodo-data-location.json";
+const DEFAULT_DATA_DIRECTORY_NAME = "MyTodoData";
 
 let defaultDataDirectory = null;
 let activeDataDirectory = null;
@@ -33,18 +34,59 @@ function getLocationFilePath() {
   return path.join(app.getPath("appData"), LOCATION_FILE_NAME);
 }
 
+function hasUserDataOverride() {
+  return process.argv.some(
+    (argument) => argument === "--user-data-dir" || argument.startsWith("--user-data-dir="),
+  );
+}
+
+function getLegacyDataDirectory() {
+  return normalizeDataDirectory(app.getPath("userData"));
+}
+
+function getPackagedDataDirectory(executablePath = app.getPath("exe")) {
+  const appDirectory = path.dirname(executablePath);
+  return path.join(path.dirname(appDirectory), DEFAULT_DATA_DIRECTORY_NAME);
+}
+
 function getDefaultDataDirectory() {
   if (!defaultDataDirectory) {
-    defaultDataDirectory = normalizeDataDirectory(app.getPath("userData"));
+    defaultDataDirectory = normalizeDataDirectory(
+      app.isPackaged && !hasUserDataOverride()
+        ? getPackagedDataDirectory()
+        : getLegacyDataDirectory(),
+    );
   }
   return defaultDataDirectory;
 }
 
+function migrateLegacyDataIfNeeded(defaultDirectory) {
+  const legacyDirectory = getLegacyDataDirectory();
+  if (isSameDirectory(legacyDirectory, defaultDirectory)) return;
+
+  const legacyFiles = getExistingDataFiles(legacyDirectory);
+  if (!legacyFiles.length) return;
+
+  if (getExistingDataFiles(defaultDirectory).length) {
+    console.warn("新默认数据目录已有数据，保留旧目录以避免覆盖", legacyDirectory);
+    return;
+  }
+
+  activeDataDirectory = legacyDirectory;
+  try {
+    migrateDataDirectory(defaultDirectory);
+  } catch (error) {
+    activeDataDirectory = legacyDirectory;
+    console.error("无法迁移旧数据目录，继续使用原位置", error);
+  }
+}
 function initializeDataDirectory() {
   const defaultDirectory = getDefaultDataDirectory();
   const result = readJsonWithBackup(getLocationFilePath(), {});
   const configuredDirectory = normalizeDataDirectory(result.value?.directory);
   activeDataDirectory = configuredDirectory || defaultDirectory;
+
+  if (!configuredDirectory) migrateLegacyDataIfNeeded(defaultDirectory);
 
   if (result.source === "backup") {
     console.warn("数据位置记录损坏，已从备份恢复", result.primaryError);
@@ -169,6 +211,7 @@ module.exports = {
   getDataDirectory,
   getDataFilePath,
   getDataLocation,
+  getPackagedDataDirectory,
   initializeDataDirectory,
   isSameDirectory,
   migrateDataDirectory,

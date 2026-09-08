@@ -113,13 +113,18 @@ npm run verify:release
 
 ## 数据位置
 
-应用数据默认保存在 Electron 的 `userData` 目录中。Windows 默认路径在 C 盘的 `%APPDATA%\MyTodo`，通常是 `C:\Users\<用户名>\AppData\Roaming\MyTodo`。
+发布版默认将数据保存到安装目录的同级 `MyTodoData` 文件夹。例如：
+
+- 应用：`C:\Users\<用户名>\AppData\Local\Programs\MyTodo\MyTodo.exe`
+- 数据：`C:\Users\<用户名>\AppData\Local\Programs\MyTodoData`
 
 - `todo-store.json`：待办任务数据
 - `win-config.json`：窗口尺寸、悬浮窗位置、应用设置
 - `todo-store.json.bak`、`win-config.json.bak`：上一次有效数据的自动备份
 
-可在应用的“设置”页查看当前数据位置并更改目录。确认切换后，应用会迁移以上任务、设置和备份文件；目标目录若已有 MyTodo 数据，应用会拒绝覆盖，防止两套数据混合。Electron 的缓存不属于应用数据，仍由系统管理。
+首次升级时，如新默认目录为空，应用会将旧 `%APPDATA%\MyTodo` 内的任务、设置与备份自动迁移过去；新目录已有 MyTodo 数据时不会覆盖。可在应用的“设置”页查看当前数据位置并自行更改目录。Electron 缓存不属于应用数据，仍由系统管理。
+
+开发模式和显式 `--user-data-dir` 参数仍使用指定的独立目录，不会写入 `MyTodoData`。
 升级前，先通过托盘完全退出应用，再另外备份整个数据目录；`.bak` 只保留上一次有效写入，不代替长期备份。手动恢复时也要先退出应用，再替换数据文件。启动旧数据时会补充创建时间、提醒时间和提醒去重字段。
 
 开发测试请使用独立目录，避免迁移或通知调度改变日常数据：
