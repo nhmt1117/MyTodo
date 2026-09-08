@@ -134,6 +134,7 @@ function createFloatWindow() {
     show: false,
     frame: false,
     transparent: true,
+    backgroundColor: "#00000000",
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -223,6 +224,7 @@ function createMainWindow() {
     minHeight: 700,
     show: false,
     transparent: true,
+    backgroundColor: "#00000000",
     frame: false,
     resizable: true,
     webPreferences: {

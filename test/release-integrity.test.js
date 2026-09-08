@@ -47,11 +47,12 @@ test("task deletion requires an explicit renderer confirmation", () => {
   assert.match(renderer, /async function submitDelete\(\)[\s\S]*?electronAPI\.deleteTodo\(taskId\)/);
 });
 
-test("main window uses rounded corners and the application icon", () => {
+test("main window uses opaque rounded content and the application icon", () => {
   const styles = read("renderer/styles.css");
   const windows = read("src/main/windows.js");
-  assert.match(styles, /body\{[\s\S]*?background:#e2e8f0;/);
-  assert.match(styles, /#app-root\{[\s\S]*?border-radius:20px;/);
+  assert.match(styles, /body\{[\s\S]*?background:transparent;/);
+  assert.match(styles, /#app-root\{[\s\S]*?border-radius:20px;[\s\S]*?clip-path:inset\(0 round 20px\);[\s\S]*?background:#e7edf2;/);
+  assert.match(windows, /transparent: true,[\s\S]*?backgroundColor: "#00000000"/);
   assert.match(windows, /const APP_ICON_PATH = path\.join\(APP_ROOT, "MyTodo\.ico"\);/);
   assert.match(windows, /new Tray\(APP_ICON_PATH\)/);
   assert.match(windows, /icon: APP_ICON_PATH/);
