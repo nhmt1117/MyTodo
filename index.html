@@ -10,6 +10,9 @@
     <span>MyTodo 个人待办</span>
     <div class="title-ctrl">
       <div class="ctrl-btn" onclick="window.electronAPI.winMinimize()">─</div>
+      <button type="button" class="ctrl-btn" id="maximizeRestoreButton" onclick="toggleMainWindowMaximize()" title="最大化窗口" aria-label="最大化窗口">
+        <span class="maximize-restore-icon" aria-hidden="true"></span>
+      </button>
       <div class="ctrl-btn close" onclick="window.electronAPI.winClose()">×</div>
     </div>
   </div>
@@ -22,11 +25,9 @@
         <div class="nav-item" data-page="calendar">
           <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/></svg>
         </div>
-        <div class="nav-item" data-page="setting">
-          <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,3.6,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
-        </div>
       </div>
-      <div class="bottom-btn" hidden onclick="openFloat()" title="单词悬浮窗">
+      <!-- 单词悬浮入口暂时停用
+      <div class="bottom-btn" onclick="openFloat()" title="单词悬浮窗">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
           <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5z"/>
@@ -34,7 +35,12 @@
           <path d="M8 11h6"/>
         </svg>
       </div>
+      -->
+      <div class="nav-item bottom-nav-item" data-page="setting" title="设置">
+        <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,3.6,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+      </div>
     </aside>
+
     <main class="glass">
       <div class="page page-home active" id="home">
         <div class="head-bar-row1" id="nowDate"></div>
@@ -100,12 +106,14 @@
 <div id="detailModal" class="modal-mask hidden">
   <div class="glass modal-box detail-modal">
     <h3 style="margin-bottom:16px;color:#1e293b">任务详情</h3>
-    <div class="detail-row"><span class="detail-label">标题：</span><span id="dTitle"></span></div>
-    <div class="detail-row"><span class="detail-label">备注描述：</span><span id="dDesc"></span></div>
-    <div class="detail-row"><span class="detail-label" id="dDateLabel">截止日期：</span><span id="dDate"></span></div>
-    <div class="detail-row"><span class="detail-label">优先级：</span><span id="dPrio"></span></div>
-    <div class="detail-row"><span class="detail-label">任务类型：</span><span id="dType"></span></div>
-    <div class="detail-row"><span class="detail-label">提醒设置：</span><span id="dReminder"></span></div>
+    <div class="detail-content">
+      <div class="detail-row"><span class="detail-label">标题：</span><span id="dTitle"></span></div>
+      <div class="detail-row"><span class="detail-label">备注描述：</span><span id="dDesc"></span></div>
+      <div class="detail-row"><span class="detail-label" id="dDateLabel">截止日期：</span><span id="dDate"></span></div>
+      <div class="detail-row"><span class="detail-label">优先级：</span><span id="dPrio"></span></div>
+      <div class="detail-row"><span class="detail-label">任务类型：</span><span id="dType"></span></div>
+      <div class="detail-row"><span class="detail-label">提醒设置：</span><span id="dReminder"></span></div>
+    </div>
     <div class="modal-footer">
       <button class="btn" onclick="hideDetailModal()">关闭</button>
     </div>
@@ -117,11 +125,12 @@
     <input type="hidden" id="editId">
     <div class="form-row">
       <label>任务标题</label>
-      <input id="eTitle">
+      <input id="eTitle" maxlength="80" aria-describedby="eTitleError">
+      <p class="field-error hidden" id="eTitleError" aria-live="polite"></p>
     </div>
     <div class="form-row">
       <label>详细描述</label>
-      <textarea id="eDesc"></textarea>
+      <textarea id="eDesc" maxlength="500"></textarea>
     </div>
     <div class="form-row" id="eDateRow">
       <label id="eDateLabel">截止日期</label>
@@ -145,12 +154,13 @@
     </div>
     <div class="form-row inline">
       <input type="checkbox" id="eRemind">
-      <label for="eRemind">开启系统通知</label>
+      <label for="eRemind">开启任务提醒</label>
     </div>
     <div class="form-row" id="eRemindTimeRow">
       <label>提醒时间</label>
       <input id="eRemindTime" type="time" value="09:00">
     </div>
+    <p class="form-hint" id="eReminderRule"></p>
     <div class="modal-footer">
       <button class="btn" onclick="hideEditModal()">取消</button>
       <button class="btn" onclick="submitEdit()">保存修改</button>
@@ -162,11 +172,12 @@
     <h3 style="margin-bottom:16px;color:#1e293b">新增普通待办任务</h3>
     <div class="form-row">
       <label>任务标题</label>
-      <input id="nTitle">
+      <input id="nTitle" maxlength="80" aria-describedby="nTitleError">
+      <p class="field-error hidden" id="nTitleError" aria-live="polite"></p>
     </div>
     <div class="form-row">
       <label>详细描述备注</label>
-      <textarea id="nDesc"></textarea>
+      <textarea id="nDesc" maxlength="500"></textarea>
     </div>
     <div class="form-row">
       <label>截止日期</label>
@@ -182,12 +193,13 @@
     </div>
     <div class="form-row inline">
       <input type="checkbox" id="nRemind">
-      <label for="nRemind">开启系统通知</label>
+      <label for="nRemind">开启任务提醒</label>
     </div>
     <div class="form-row" id="nRemindTimeRow">
       <label>提醒时间</label>
       <input id="nRemindTime" type="time" value="09:00">
     </div>
+    <p class="form-hint" id="nReminderRule"></p>
     <div class="modal-footer">
       <button class="btn" onclick="hideNormalModal()">取消</button>
       <button class="btn" onclick="submitNormal()">确认添加</button>
@@ -199,7 +211,8 @@
     <h3 style="margin-bottom:16px;color:#1e293b">新增循环提醒任务</h3>
     <div class="form-row">
       <label>任务标题</label>
-      <input id="cTitle">
+      <input id="cTitle" maxlength="80" aria-describedby="cTitleError">
+      <p class="field-error hidden" id="cTitleError" aria-live="polite"></p>
     </div>
     <div class="form-row">
       <label>循环类型</label>
@@ -219,8 +232,9 @@
     </div>
     <div class="form-row inline">
       <input type="checkbox" id="cRemind" checked>
-      <label for="cRemind">开启系统通知</label>
+      <label for="cRemind">开启任务提醒</label>
     </div>
+    <p class="form-hint" id="cReminderRule"></p>
     <div class="modal-footer">
       <button class="btn" onclick="hideCycleModal()">取消</button>
       <button class="btn btn-cycle" onclick="submitCycle()">确认添加</button>

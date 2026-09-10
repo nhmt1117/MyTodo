@@ -9,7 +9,7 @@ const pkg = require("../package.json");
 const output = path.join(root, pkg.build.directories.output);
 const archive = path.join(output, "win-unpacked", "resources", "app.asar");
 const expectedFiles = [
-  "main.js", "preload.js", "index.html", "float.html", "wordlist.json",
+  "main.js", "preload.js", "index.html", "float.html", "reminder.html", "wordlist.json",
   "MyTodo.ico", "README.md", "LICENSE",
   "CHANGELOG.md", "V1_RELEASE_CHECKLIST.md", "V1_RELEASE_TEST_REPORT.md",
 ];

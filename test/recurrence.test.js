@@ -69,6 +69,25 @@ test("one-time reminders fire once after the selected time", () => {
   );
 });
 
+
+test("snoozed reminders wait until their persisted delay expires", () => {
+  const item = cycle({
+    isCycle: false,
+    cycleType: "",
+    date: "2026-09-03",
+    text: "延后任务",
+    lastReminderKey: "once:2026-09-03:09:00",
+    snoozedReminderKey: "once:2026-09-03:09:00",
+    snoozedUntil: "2026-09-03T09:05:00+08:00",
+  });
+
+  assert.equal(getReminderCandidate(item, new Date("2026-09-03T09:04:59+08:00")), null);
+  const due = getReminderCandidate(item, new Date("2026-09-03T09:05:00+08:00"));
+  assert.equal(due.key, item.snoozedReminderKey);
+  assert.equal(due.isSnoozed, true);
+  assert.equal(due.dueDate, "2026-09-03");
+  assert.equal(due.remindTime, "09:00");
+});
 test("cycle reminders fire at most once for each occurrence", () => {
   const item = cycle({ cycleType: "weekly" });
   const due = getReminderCandidate(item, new Date(2026, 8, 10, 9, 0));

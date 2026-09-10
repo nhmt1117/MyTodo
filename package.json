@@ -18,7 +18,7 @@
     "build:linux": "electron-builder --linux",
     "pack": "electron-builder --dir",
     "test": "node --test",
-    "check": "node --check main.js && node --check preload.js && node --check src/main/config.js && node --check src/main/dataLocation.js && node --check src/main/storage.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && npm test"
+    "check": "node --check main.js && node --check preload.js && node --check src/main/config.js && node --check src/main/dataLocation.js && node --check src/main/storage.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && node --check renderer/reminder.js && npm test"
   },
   "build": {
     "appId": "com.nhmt.mytodo",
@@ -31,6 +31,7 @@
       "preload.js",
       "index.html",
       "float.html",
+      "reminder.html",
       "renderer/**/*",
       "src/**/*",
       "wordlist.json",

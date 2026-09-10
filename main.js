@@ -11,12 +11,13 @@ const {
   createMainWindow,
   createTray,
   markQuitting,
-  showMainWindow,
+  prepareReminderWindow,
+  showReminder,
 } = require("./src/main/windows");
 
 app.setAppUserModelId("com.nhmt.mytodo");
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initializeDataDirectory();
   loadGlobalConfig();
   loadTodoFile();
@@ -24,7 +25,8 @@ app.whenReady().then(() => {
   registerIpcHandlers();
   createMainWindow();
   createTray();
-  startReminderScheduler({ showMainWindow });
+  await prepareReminderWindow();
+  startReminderScheduler({ showReminder });
 });
 
 app.on("before-quit", () => {

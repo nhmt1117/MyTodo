@@ -42,6 +42,14 @@ function registerIpcHandlers() {
 
   ipcMain.on("win-minimize", windows.minimizeMainWindow);
   ipcMain.on("win-close", windows.hideMainWindow);
+  ipcMain.handle("win-toggle-maximize", () => windows.toggleMainWindowMaximize());
+  ipcMain.handle("reminder-action", (event, action, identity) => {
+    return windows.handleReminderAction(event.sender, action, identity, {
+      snooze: (reminder) => {
+        return !!todoStore.snoozeTodoReminder(reminder.id, reminder.key, 5);
+      },
+    });
+  });
 
   ipcMain.handle("get-app-info", async () => ({
     isPackaged: app.isPackaged,

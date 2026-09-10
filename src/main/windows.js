@@ -10,12 +10,19 @@ const {
 const APP_ROOT = path.join(__dirname, "..", "..");
 const APP_ICON_PATH = path.join(APP_ROOT, "MyTodo.ico");
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
+const REMINDER_WIN_SIZE = { width: 388, height: 230 };
+const REMINDER_MARGIN = 18;
 
 let mainWindow = null;
 let floatWindow = null;
 let tray = null;
 let isQuitting = false;
 let floatMoveSaveTimer = null;
+let reminderWindow = null;
+let reminderWindowReady = false;
+let reminderWindowReadyPromise = null;
+let currentReminder = null;
+const reminderQueue = [];
 
 function markQuitting() {
   isQuitting = true;
@@ -23,9 +30,29 @@ function markQuitting() {
 
 function showMainWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
   }
+}
+
+function showTodoDetailInMainWindow(todoId) {
+  const id = Number(todoId);
+  showMainWindow();
+  if (!Number.isFinite(id) || !mainWindow || mainWindow.isDestroyed()) return false;
+
+  const targetWindow = mainWindow;
+  const sendTaskId = () => {
+    if (!targetWindow.isDestroyed() && mainWindow === targetWindow) {
+      targetWindow.webContents.send("open-todo-detail", id);
+    }
+  };
+  if (targetWindow.webContents.isLoadingMainFrame()) {
+    targetWindow.webContents.once("did-finish-load", sendTaskId);
+  } else {
+    sendTaskId();
+  }
+  return true;
 }
 
 function hideMainWindow() {
@@ -36,6 +63,187 @@ function minimizeMainWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
 }
 
+function toggleMainWindowMaximize() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+    return false;
+  }
+  mainWindow.maximize();
+  return true;
+}
+
+function normalizeReminderPayload(candidate) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const id = Number(candidate.id);
+  const key = String(candidate.key || "");
+  const body = String(candidate.body || "").trim();
+  if (!Number.isFinite(id) || !key || !body) return null;
+
+  return {
+    id,
+    key,
+    title: String(candidate.title || "MyTodo 提醒"),
+    body,
+    description: String(candidate.description || ""),
+    dueDate: String(candidate.dueDate || ""),
+    remindTime: String(candidate.remindTime || ""),
+    priority: ["low", "mid", "high"].includes(candidate.priority)
+      ? candidate.priority
+      : "mid",
+    isCycle: !!candidate.isCycle,
+    cycleType: String(candidate.cycleType || ""),
+    isSnoozed: !!candidate.isSnoozed,
+  };
+}
+
+function getReminderWindowBounds() {
+  const display =
+    mainWindow && !mainWindow.isDestroyed()
+      ? screen.getDisplayMatching(mainWindow.getBounds())
+      : screen.getPrimaryDisplay();
+  const { x, y, width, height } = display.workArea;
+  return {
+    x: x + width - REMINDER_WIN_SIZE.width - REMINDER_MARGIN,
+    y: y + height - REMINDER_WIN_SIZE.height - REMINDER_MARGIN,
+    width: REMINDER_WIN_SIZE.width,
+    height: REMINDER_WIN_SIZE.height,
+  };
+}
+
+function sendCurrentReminder() {
+  if (
+    !currentReminder ||
+    !reminderWindowReady ||
+    !reminderWindow ||
+    reminderWindow.isDestroyed()
+  ) {
+    return false;
+  }
+
+  reminderWindow.setBounds(getReminderWindowBounds());
+  reminderWindow.webContents.send("reminder-display", {
+    ...currentReminder,
+    remainingCount: reminderQueue.length,
+  });
+  reminderWindow.showInactive();
+  return true;
+}
+
+function showNextReminder() {
+  if (currentReminder || reminderQueue.length === 0) return false;
+  currentReminder = reminderQueue.shift();
+  return sendCurrentReminder();
+}
+
+function createReminderWindow() {
+  if (reminderWindow && !reminderWindow.isDestroyed()) return reminderWindow;
+
+  reminderWindowReady = false;
+  reminderWindow = new BrowserWindow({
+    title: "MyTodo 提醒",
+    icon: APP_ICON_PATH,
+    ...REMINDER_WIN_SIZE,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    closable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    hasShadow: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(APP_ROOT, "preload.js"),
+    },
+  });
+
+  reminderWindow.setSkipTaskbar(true);
+  reminderWindow.setAlwaysOnTop(true, "pop-up-menu");
+  const targetWindow = reminderWindow;
+  reminderWindowReadyPromise = targetWindow
+    .loadFile(path.join(APP_ROOT, "reminder.html"))
+    .then(() => {
+      if (targetWindow.isDestroyed() || reminderWindow !== targetWindow) return false;
+      reminderWindowReady = true;
+      return true;
+    })
+    .catch((error) => {
+      console.warn("自定义提醒页面加载失败", error);
+      if (!targetWindow.isDestroyed()) targetWindow.destroy();
+      return false;
+    });
+  reminderWindow.on("closed", () => {
+    reminderWindow = null;
+    reminderWindowReady = false;
+    reminderWindowReadyPromise = null;
+    currentReminder = null;
+    reminderQueue.length = 0;
+  });
+
+  return reminderWindow;
+}
+
+async function prepareReminderWindow() {
+  createReminderWindow();
+  return reminderWindowReadyPromise ? reminderWindowReadyPromise : reminderWindowReady;
+}
+
+function showReminder(candidate) {
+  const payload = normalizeReminderPayload(candidate);
+  if (!payload) return false;
+
+  createReminderWindow();
+  if (!reminderWindowReady) return false;
+
+  const isDuplicate =
+    (currentReminder && currentReminder.id === payload.id && currentReminder.key === payload.key) ||
+    reminderQueue.some((item) => item.id === payload.id && item.key === payload.key);
+  if (isDuplicate) return true;
+
+  reminderQueue.push(payload);
+  if (!currentReminder) showNextReminder();
+  else sendCurrentReminder();
+  return true;
+}
+
+function handleReminderAction(sender, action, identity = {}, handlers = {}) {
+  if (
+    !reminderWindow ||
+    reminderWindow.isDestroyed() ||
+    reminderWindow.webContents !== sender ||
+    !currentReminder
+  ) {
+    return false;
+  }
+
+  const matchesCurrent =
+    Number(identity.id) === currentReminder.id &&
+    String(identity.key || "") === currentReminder.key;
+  if (!matchesCurrent || !["dismiss", "open", "snooze"].includes(action)) return false;
+
+  const handledReminder = { ...currentReminder };
+  if (action === "snooze") {
+    if (typeof handlers.snooze !== "function" || handlers.snooze(handledReminder) !== true) {
+      return false;
+    }
+  }
+
+  reminderWindow.hide();
+  currentReminder = null;
+  if (action === "open") showTodoDetailInMainWindow(handledReminder.id);
+  showNextReminder();
+  return true;
+}
 function createTray() {
   tray = new Tray(APP_ICON_PATH);
   const contextMenu = Menu.buildFromTemplate([
@@ -220,7 +428,7 @@ function createMainWindow() {
     icon: APP_ICON_PATH,
     width: config.width,
     height: config.height,
-    minWidth: 480,
+    minWidth: 540,
     minHeight: 700,
     show: false,
     transparent: true,
@@ -256,11 +464,15 @@ module.exports = {
   createFloatWindow,
   createMainWindow,
   createTray,
+  handleReminderAction,
   hideMainWindow,
   markQuitting,
   minimizeMainWindow,
   moveFloatWindow,
+  prepareReminderWindow,
   saveFloatWindowBounds,
   showMainWindow,
+  showReminder,
+  toggleMainWindowMaximize,
   toggleFloatWindow,
 };

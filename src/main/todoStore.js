@@ -8,6 +8,8 @@ let nextId = 1;
 
 const priorityValues = new Set(["low", "mid", "high"]);
 const cycleTypeValues = new Set(["", "daily", "weekly", "monthly"]);
+const TITLE_MAX_LENGTH = 80;
+const DESCRIPTION_MAX_LENGTH = 500;
 
 function getTodoFilePath() {
   return getDataFilePath("todo-store.json");
@@ -15,6 +17,10 @@ function getTodoFilePath() {
 
 function toText(value) {
   return String(value ?? "");
+}
+
+function limitText(value, maxLength) {
+  return Array.from(toText(value)).slice(0, maxLength).join("");
 }
 
 function normalizePriority(value) {
@@ -33,6 +39,12 @@ function normalizeDate(value) {
 function normalizeTimestamp(value, fallback) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+}
+
+function normalizeOptionalTimestamp(value) {
+  if (!toText(value)) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function normalizeTodoItem(item = {}, now = new Date()) {
@@ -58,6 +70,8 @@ function normalizeTodoItem(item = {}, now = new Date()) {
     createdAt,
     updatedAt: normalizeTimestamp(source.updatedAt, createdAt),
     lastReminderKey: toText(source.lastReminderKey),
+    snoozedReminderKey: toText(source.snoozedReminderKey),
+    snoozedUntil: normalizeOptionalTimestamp(source.snoozedUntil),
   };
 }
 
@@ -108,18 +122,23 @@ function getTodoList() {
 }
 
 function addTodoItem(payload = {}) {
-  if (!toText(payload.text).trim()) return null;
+  const text = limitText(payload.text, TITLE_MAX_LENGTH).trim();
+  if (!text) return null;
 
   const now = new Date();
   const newItem = normalizeTodoItem(
     {
       ...payload,
+      text,
+      desc: limitText(payload.desc, DESCRIPTION_MAX_LENGTH),
       id: nextId,
       muteRemind: false,
       archived: false,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       lastReminderKey: "",
+      snoozedReminderKey: "",
+      snoozedUntil: "",
     },
     now,
   );
@@ -135,8 +154,8 @@ function addTodoItem(payload = {}) {
 function buildTodoPatch(payload = {}) {
   const patch = {};
 
-  if ("text" in payload) patch.text = toText(payload.text).trim();
-  if ("desc" in payload) patch.desc = toText(payload.desc);
+  if ("text" in payload) patch.text = limitText(payload.text, TITLE_MAX_LENGTH).trim();
+  if ("desc" in payload) patch.desc = limitText(payload.desc, DESCRIPTION_MAX_LENGTH);
   if ("date" in payload) patch.date = normalizeDate(payload.date);
   if ("priority" in payload) patch.priority = normalizePriority(payload.priority);
   if ("remind" in payload) patch.remind = !!payload.remind;
@@ -165,6 +184,8 @@ function updateTodo(payload = {}) {
     ...patch,
     updatedAt: new Date().toISOString(),
     lastReminderKey: reminderChanged ? "" : todoData[idx].lastReminderKey,
+    snoozedReminderKey: reminderChanged ? "" : todoData[idx].snoozedReminderKey,
+    snoozedUntil: reminderChanged ? "" : todoData[idx].snoozedUntil,
   };
   saveTodoFile();
   return cloneTodo(todoData[idx]);
@@ -174,6 +195,10 @@ function setArchived(id, archived) {
   const target = todoData.find((item) => item.id === Number(id));
   if (target) {
     target.archived = !!archived;
+    if (target.archived) {
+      target.snoozedReminderKey = "";
+      target.snoozedUntil = "";
+    }
     target.updatedAt = new Date().toISOString();
     saveTodoFile();
   }
@@ -184,6 +209,8 @@ function muteTodoRemind(id) {
   const target = todoData.find((item) => item.id === Number(id));
   if (target) {
     target.muteRemind = true;
+    target.snoozedReminderKey = "";
+    target.snoozedUntil = "";
     target.updatedAt = new Date().toISOString();
     saveTodoFile();
   }
@@ -200,6 +227,29 @@ function addToToday(id) {
   return target ? cloneTodo(target) : undefined;
 }
 
+function snoozeTodoReminder(id, key, minutes = 5, now = new Date()) {
+  const target = todoData.find((item) => item.id === Number(id));
+  const reminderKey = toText(key);
+  const delayMinutes = Number(minutes);
+  const baseTime = new Date(now);
+  if (
+    !target ||
+    !reminderKey ||
+    !Number.isFinite(delayMinutes) ||
+    delayMinutes <= 0 ||
+    Number.isNaN(baseTime.getTime())
+  ) {
+    return undefined;
+  }
+
+  target.lastReminderKey = reminderKey;
+  target.snoozedReminderKey = reminderKey;
+  target.snoozedUntil = new Date(baseTime.getTime() + delayMinutes * 60 * 1000).toISOString();
+  target.updatedAt = baseTime.toISOString();
+  saveTodoFile();
+  return cloneTodo(target);
+}
+
 function deleteTodo(id) {
   const previousLength = todoData.length;
   todoData = todoData.filter((item) => item.id !== Number(id));
@@ -211,10 +261,23 @@ function markRemindersSent(entries = []) {
   let changed = false;
   for (const entry of entries) {
     const target = todoData.find((item) => item.id === Number(entry.id));
-    if (!target || !entry.key || target.lastReminderKey === entry.key) continue;
-    target.lastReminderKey = String(entry.key);
-    target.updatedAt = new Date().toISOString();
-    changed = true;
+    const reminderKey = toText(entry.key);
+    if (!target || !reminderKey) continue;
+
+    let targetChanged = false;
+    if (target.lastReminderKey !== reminderKey) {
+      target.lastReminderKey = reminderKey;
+      targetChanged = true;
+    }
+    if (target.snoozedReminderKey || target.snoozedUntil) {
+      target.snoozedReminderKey = "";
+      target.snoozedUntil = "";
+      targetChanged = true;
+    }
+    if (targetChanged) {
+      target.updatedAt = new Date().toISOString();
+      changed = true;
+    }
   }
   if (changed) saveTodoFile();
   return changed;
@@ -230,5 +293,6 @@ module.exports = {
   muteTodoRemind,
   saveTodoFile,
   setArchived,
+  snoozeTodoReminder,
   updateTodo,
 };

@@ -2,7 +2,9 @@ let appConfig = {}
 let currentDate = new Date()
 let sortType = "date-asc"
 let selectedCalendarDate = getTodayStr()
-let calendarFirstLoad = true  // 仅应用启动后首次进入日历时默认显示当天
+let calendarFirstLoad = true // 仅应用启动后首次进入日历时默认显示当天
+let calendarTodoCache = null
+let calendarDirty = true
 const $ = s=>document.querySelector(s)
 const $$ = s=>Array.from(document.querySelectorAll(s))
 const recurrence = window.todoRecurrence
@@ -15,6 +17,46 @@ function safeDataId(value){
   const id = Number(value)
   return Number.isFinite(id) ? String(id) : ""
 }
+function clearTitleError(inputId){
+  const input = $("#"+inputId)
+  const error = $("#"+inputId+"Error")
+  input.classList.remove("field-invalid")
+  input.removeAttribute("aria-invalid")
+  error.textContent = ""
+  error.classList.add("hidden")
+}
+function showTitleError(inputId){
+  const input = $("#"+inputId)
+  const error = $("#"+inputId+"Error")
+  input.classList.add("field-invalid")
+  input.setAttribute("aria-invalid", "true")
+  error.textContent = "请填写任务标题"
+  error.classList.remove("hidden")
+  requestAnimationFrame(()=>{
+    input.focus({preventScroll:true})
+    input.setSelectionRange(input.value.length,input.value.length)
+  })
+}
+;["eTitle","nTitle","cTitle"].forEach(inputId=>{
+  $("#"+inputId).addEventListener("input",()=>clearTitleError(inputId))
+})
+function setMainWindowMaximized(isMaximized){
+  const button = $("#maximizeRestoreButton")
+  if(!button) return
+  const label = isMaximized ? "还原窗口" : "最大化窗口"
+  document.body.classList.toggle("window-maximized", isMaximized)
+  button.classList.toggle("is-maximized", isMaximized)
+  button.title = label
+  button.setAttribute("aria-label", label)
+}
+async function toggleMainWindowMaximize(){
+  const isMaximized = await window.electronAPI.toggleMainWindowMaximize()
+  setMainWindowMaximized(isMaximized)
+}
+$(".title-bar").ondblclick = event=>{
+  if(event.target.closest(".title-ctrl")) return
+  toggleMainWindowMaximize()
+}
 const navItems = $$('.nav-item')
 const pages = $$('.page')
 navItems.forEach(item=>{
@@ -26,18 +68,13 @@ navItems.forEach(item=>{
     $(`#${targetPage}`).classList.add('active')
     if(targetPage === "calendar") {
       if(calendarFirstLoad){
-        // 应用启动后首次进入：默认当天，滚动到顶
         currentDate = new Date()
         selectedCalendarDate = getTodayStr()
         calendarFirstLoad = false
       }
-      // 保存滚动位置：prefill 会缩短内容导致 scrollTop 被夹断，需在整段渲染完后再恢复
-      const savedScroll = $("#calendarScroll").scrollTop
-      prefillDayTaskBox(selectedCalendarDate)
-      await renderCalendar()
-      const all = await window.electronAPI.getTodoList()
-      renderDayTaskPanel(selectedCalendarDate,all)
-      $("#calendarScroll").scrollTop = savedScroll
+      if(calendarDirty || !calendarTodoCache){
+        await refreshCalendar({rebuild:true,showLoading:true})
+      }
     }
   }
 })
@@ -52,6 +89,7 @@ function getTodayStr(){
 let editTargetItem = null
 let deleteTargetId = null
 function showEditModal(item){
+  clearTitleError("eTitle")
   editTargetItem = {...item}
   $("#editId").value = item.id
   $("#eTitle").value = item.text
@@ -64,6 +102,7 @@ function showEditModal(item){
   $("#eDateLabel").innerText = item.isCycle ? "开始日期" : "截止日期"
   $("#eCycleTypeRow").classList.toggle("hidden", !item.isCycle)
   syncReminderTime("eRemind", "eRemindTime")
+  updateReminderRule("edit")
   $("#editModal").classList.remove("hidden")
 }
 function hideEditModal(){$("#editModal").classList.add("hidden")}
@@ -79,18 +118,14 @@ async function submitEdit(){
     isCycle: !!editTargetItem.isCycle,
     cycleType: editTargetItem.isCycle ? $("#eCycleType").value : ""
   }
-  if(!payload.text) return alert("请填写任务标题")
+  if(!payload.text) return showTitleError("eTitle")
   if(payload.isCycle && !payload.date) return alert("请选择循环开始日期")
   if(payload.remind && !payload.date) return alert("开启通知前请先选择日期")
   if(payload.remind && !payload.remindTime) return alert("请选择提醒时间")
   await window.electronAPI.updateTodo(payload)
   hideEditModal()
-  refreshHome()
-  if($("#calendar").classList.contains("active")){
-    const all = await window.electronAPI.getTodoList()
-    renderCalendar()
-    renderDayTaskPanel(selectedCalendarDate, all)
-  }
+  await refreshHome()
+  await refreshCalendarAfterTaskChange()
 }
 function showDetailModal(item){
   $("#dTitle").innerText = item.text
@@ -100,10 +135,22 @@ function showDetailModal(item){
   const prioMap = {low:"🟢低",mid:"🟡中",high:"🔴高"}
   $("#dPrio").innerText = prioMap[item.priority]
   $("#dType").innerText = item.isCycle ? `${cycleTypeLabels[item.cycleType] || ""}循环任务` : "普通待办"
-  $("#dReminder").innerText = item.remind ? `已开启，${item.remindTime || "09:00"}` : "未开启"
+  $("#dReminder").innerText = getReminderRule(item)
   $("#detailModal").classList.remove("hidden")
 }
 function hideDetailModal(){$("#detailModal").classList.add("hidden")}
+async function openTodoDetailById(todoId){
+  const id = Number(todoId)
+  if(!Number.isFinite(id)) return
+  const item = (await window.electronAPI.getTodoList()).find(todo=>todo.id === id)
+  if(!item) return
+  ;["editModal","normalModal","cycleModal","deleteModal"].forEach(modalId=>{
+    $("#"+modalId)?.classList.add("hidden")
+  })
+  deleteTargetId = null
+  showDetailModal(item)
+}
+window.electronAPI.onOpenTodoDetail(openTodoDetailById)
 function showDeleteModal(itemId){
   const taskId = Number(itemId)
   if(!Number.isInteger(taskId)) return
@@ -124,21 +171,19 @@ async function submitDelete(){
   try{
     await window.electronAPI.deleteTodo(taskId)
     hideDeleteModal()
-    refreshHome()
-    if($("#calendar").classList.contains("active")){
-      const all = await window.electronAPI.getTodoList()
-      renderCalendar()
-      renderDayTaskPanel(selectedCalendarDate, all)
-    }
+    await refreshHome()
+    await refreshCalendarAfterTaskChange()
   }catch(error){
     confirmButton.disabled = false
     alert("删除任务失败，请稍后重试")
   }
 }
 function showAddNormalModal(){
+  clearTitleError("nTitle")
   $("#nDate").value = getTodayStr()
   if(!$("#nRemindTime").value) $("#nRemindTime").value = "09:00"
   syncReminderTime("nRemind", "nRemindTime")
+  updateReminderRule("normal")
   $("#normalModal").classList.remove("hidden")
 }
 function hideNormalModal(){$("#normalModal").classList.add("hidden")}
@@ -149,19 +194,22 @@ async function submitNormal(){
   const prio = $("#nPrio").value
   const remind = $("#nRemind").checked
   const remindTime = $("#nRemindTime").value
-  if(!text) return alert("请填写任务标题")
+  if(!text) return showTitleError("nTitle")
   if(remind && !date) return alert("开启通知前请先选择截止日期")
   if(remind && !remindTime) return alert("请选择提醒时间")
   await window.electronAPI.addTodoItem({text,desc,date,priority:prio,remind,remindTime,isCycle:false})
   hideNormalModal()
   $("#nTitle").value=""
   $("#nDesc").value=""
-  refreshHome()
+  await refreshHome()
+  await refreshCalendarAfterTaskChange()
 }
 function showAddCycleModal(){
+  clearTitleError("cTitle")
   $("#cDate").value = getTodayStr()
   if(!$("#cTime").value) $("#cTime").value = "09:00"
   syncReminderTime("cRemind", "cTime")
+  updateReminderRule("cycle")
   $("#cycleModal").classList.remove("hidden")
 }
 function hideCycleModal(){$("#cycleModal").classList.add("hidden")}
@@ -171,7 +219,7 @@ async function submitCycle(){
   const date = $("#cDate").value
   const remindTime = $("#cTime").value
   const remind = $("#cRemind").checked
-  if(!text) return alert("请填写任务标题")
+  if(!text) return showTitleError("cTitle")
   if(!date) return alert("请选择循环开始日期")
   if(remind && !remindTime) return alert("请选择提醒时间")
   await window.electronAPI.addTodoItem({
@@ -179,12 +227,41 @@ async function submitCycle(){
   })
   hideCycleModal()
   $("#cTitle").value=""
-  refreshHome()
+  await refreshHome()
+  await refreshCalendarAfterTaskChange()
 }
 function syncReminderTime(checkboxId, timeInputId){
   const checkbox = $("#"+checkboxId)
   const input = $("#"+timeInputId)
   input.disabled = !checkbox.checked
+}
+function getReminderRule(item){
+  if(!item || !item.remind) return "开启后会按任务日期和提醒时间显示任务提醒。"
+  const time = item.remindTime || "09:00"
+  if(!item.isCycle){
+    return `${item.date || "截止日期"} 当天 ${time} 提醒一次；不会提前一天或每天重复。`
+  }
+  const cycleRule = {
+    daily:"每天",
+    weekly:"每周同一星期",
+    monthly:"每月同一日号"
+  }[item.cycleType] || "每个循环日"
+  return `从 ${item.date || "开始日期"} 起，${cycleRule} ${time} 提醒一次。`
+}
+function updateReminderRule(form){
+  const fields = {
+    edit:{remind:"eRemind",date:"eDate",time:"eRemindTime",cycle:"eCycleType",target:"eReminderRule",isCycle:!!editTargetItem?.isCycle},
+    normal:{remind:"nRemind",date:"nDate",time:"nRemindTime",target:"nReminderRule",isCycle:false},
+    cycle:{remind:"cRemind",date:"cDate",time:"cTime",cycle:"cCycleType",target:"cReminderRule",isCycle:true}
+  }[form]
+  if(!fields) return
+  $("#"+fields.target).innerText = getReminderRule({
+    remind:$("#"+fields.remind).checked,
+    date:$("#"+fields.date).value,
+    remindTime:$("#"+fields.time).value,
+    isCycle:fields.isCycle,
+    cycleType:fields.cycle ? $("#"+fields.cycle).value : ""
+  })
 }
 function isOverdue(item){
   if(!item || item.isCycle || !item.date) return false
@@ -351,36 +428,20 @@ function showFixedDrop(evt,item){
         showEditModal(target)
       }else if(op === 'done'){
         await window.electronAPI.archiveTodo(tid)
-        refreshHome()
-        if($("#calendar").classList.contains("active")){
-          const all = await window.electronAPI.getTodoList()
-          renderCalendar()
-          renderDayTaskPanel(selectedCalendarDate, all)
-        }
+        await refreshHome()
+        await refreshCalendarAfterTaskChange()
       }else if(op === 'restore'){
         await window.electronAPI.unarchiveTodo(tid)
-        refreshHome()
-        if($("#calendar").classList.contains("active")){
-          const all = await window.electronAPI.getTodoList()
-          renderCalendar()
-          renderDayTaskPanel(selectedCalendarDate, all)
-        }
+        await refreshHome()
+        await refreshCalendarAfterTaskChange()
       }else if(op === 'mute'){
         await window.electronAPI.muteTodoRemind(tid)
-        refreshHome()
-        if($("#calendar").classList.contains("active")){
-          const all = await window.electronAPI.getTodoList()
-          renderCalendar()
-          renderDayTaskPanel(selectedCalendarDate, all)
-        }
+        await refreshHome()
+        await refreshCalendarAfterTaskChange()
       }else if(op === 'addTodo'){
         await window.electronAPI.addToToday(tid)
-        refreshHome()
-        if($("#calendar").classList.contains("active")){
-          const all = await window.electronAPI.getTodoList()
-          renderCalendar()
-          renderDayTaskPanel(selectedCalendarDate, all)
-        }
+        await refreshHome()
+        await refreshCalendarAfterTaskChange()
       }else if(op === 'del'){
         showDeleteModal(tid)
       }
@@ -425,8 +486,42 @@ backTopBtn.addEventListener('click', ()=>{
 async function openFloat(){
   await window.electronAPI.toggleFloatWin()
 }
-async function renderCalendar(){
-  // 保留滚动位置，避免渲染后跳到顶部
+function markCalendarDirty(){
+  calendarDirty = true
+  calendarTodoCache = null
+}
+function updateCalendarSelection(){
+  $$("#calendarBody .calendar-day.active-day").forEach(day=>day.classList.remove("active-day"))
+  const selectedDay = $(`#calendarBody .calendar-day[data-date="${selectedCalendarDate}"]`)
+  if(selectedDay) selectedDay.classList.add("active-day")
+}
+function selectCalendarDate(dateStr){
+  if(selectedCalendarDate === dateStr) return
+  selectedCalendarDate = dateStr
+  if(!calendarTodoCache){
+    calendarDirty = true
+    refreshCalendar({rebuild:true,showLoading:true})
+    return
+  }
+  updateCalendarSelection()
+  renderDayTaskPanel(dateStr,calendarTodoCache)
+}
+async function refreshCalendar({rebuild=false,showLoading=false}={}){
+  const needsTodoLoad = calendarDirty || !calendarTodoCache
+  if(showLoading && (rebuild || needsTodoLoad)) prefillDayTaskBox(selectedCalendarDate)
+  if(needsTodoLoad){
+    calendarTodoCache = await window.electronAPI.getTodoList()
+    calendarDirty = false
+  }
+  if(rebuild || needsTodoLoad) renderCalendar(calendarTodoCache)
+  renderDayTaskPanel(selectedCalendarDate,calendarTodoCache)
+}
+async function refreshCalendarAfterTaskChange(){
+  markCalendarDirty()
+  if(!$("#calendar").classList.contains("active")) return
+  await refreshCalendar({rebuild:true,showLoading:true})
+}
+function renderCalendar(allTodo = calendarTodoCache || []){
   const savedScroll = $("#calendarScroll").scrollTop
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
@@ -448,7 +543,6 @@ async function renderCalendar(){
   const totalDay = last.getDate()
   const body = $("#calendarBody")
   body.innerHTML = ""
-  const allTodo = await window.electronAPI.getTodoList()
   for(let i=0;i<startWeek;i++){
     const empty = document.createElement("div")
     empty.className = "calendar-day"
@@ -464,15 +558,9 @@ async function renderCalendar(){
     const hasTask = allTodo.some(t=>t.isCycle ? recurrence.occursOnDate(t,dateStr) : t.date === dateStr)
     if(hasTask) dayDom.classList.add("has-todo")
     if(selectedCalendarDate === dateStr) dayDom.classList.add("active-day")
-    dayDom.onclick = async ()=>{
-      selectedCalendarDate = dateStr
-      prefillDayTaskBox(dateStr)
-      renderCalendar()
-      renderDayTaskPanel(dateStr,allTodo)
-    }
+    dayDom.onclick = ()=>selectCalendarDate(dateStr)
     body.appendChild(dayDom)
   }
-  // 恢复滚动位置
   $("#calendarScroll").scrollTop = savedScroll
 }
 // 切换日期/月份前预占位，避免当日任务在顶部闪一下
@@ -547,18 +635,12 @@ async function renderDayTaskPanel(dateStr,allTodo){
 $("#prevMonth").onclick = async () => {
   currentDate = recurrence.shiftMonthToStart(currentDate, -1)
   selectedCalendarDate = firstDayStrOf(currentDate)
-  prefillDayTaskBox(selectedCalendarDate)
-  await renderCalendar()
-  const all = await window.electronAPI.getTodoList()
-  renderDayTaskPanel(selectedCalendarDate, all)
+  await refreshCalendar({rebuild:true,showLoading:calendarDirty || !calendarTodoCache})
 }
 $("#nextMonth").onclick = async () => {
   currentDate = recurrence.shiftMonthToStart(currentDate, 1)
   selectedCalendarDate = firstDayStrOf(currentDate)
-  prefillDayTaskBox(selectedCalendarDate)
-  await renderCalendar()
-  const all = await window.electronAPI.getTodoList()
-  renderDayTaskPanel(selectedCalendarDate, all)
+  await refreshCalendar({rebuild:true,showLoading:calendarDirty || !calendarTodoCache})
 }
 function firstDayStrOf(d){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`
@@ -599,20 +681,27 @@ async function initApp(){
     appConfig.weekStartMon = e.target.value === "true"
     await window.electronAPI.setGlobalConfig({weekStartMon: appConfig.weekStartMon})
     if($("#calendar").classList.contains("active")){
-      prefillDayTaskBox(selectedCalendarDate)
-      await renderCalendar()
-      const all = await window.electronAPI.getTodoList()
-      renderDayTaskPanel(selectedCalendarDate, all)
+      await refreshCalendar({rebuild:true,showLoading:false})
     }
   }
   $("#autoStartCheck").onchange = async e=>{
     appConfig.autoStart = e.target.checked
     await window.electronAPI.setGlobalConfig({autoStart: appConfig.autoStart})
   }
-  ;["eRemind","nRemind","cRemind"].forEach(id=>{
-    const timeId = id === "eRemind" ? "eRemindTime" : id === "nRemind" ? "nRemindTime" : "cTime"
-    $("#"+id).onchange = ()=>syncReminderTime(id,timeId)
-    syncReminderTime(id,timeId)
+  const reminderForms = [
+    {checkbox:"eRemind",time:"eRemindTime",form:"edit"},
+    {checkbox:"nRemind",time:"nRemindTime",form:"normal"},
+    {checkbox:"cRemind",time:"cTime",form:"cycle"}
+  ]
+  reminderForms.forEach(({checkbox,time,form})=>{
+    $("#"+checkbox).onchange = ()=>{
+      syncReminderTime(checkbox,time)
+      updateReminderRule(form)
+    }
+    syncReminderTime(checkbox,time)
+  })
+  ;[["eDate","edit"],["eRemindTime","edit"],["eCycleType","edit"],["nDate","normal"],["nRemindTime","normal"],["cDate","cycle"],["cTime","cycle"],["cCycleType","cycle"]].forEach(([id,form])=>{
+    $("#"+id).onchange = ()=>updateReminderRule(form)
   })
   refreshHome()
 }
@@ -648,8 +737,6 @@ function scheduleHourlyRefresh(){
 async function refreshAll(){
   await refreshHome()
   if($("#calendar").classList.contains("active")){
-    await renderCalendar()
-    const all = await window.electronAPI.getTodoList()
-    renderDayTaskPanel(selectedCalendarDate, all)
+    await refreshCalendar({rebuild:calendarDirty || !calendarTodoCache,showLoading:false})
   }
 }

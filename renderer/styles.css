@@ -3,6 +3,7 @@ html{width:100%;height:100%;background:transparent}
 body{
   width:100vw;
   height:100vh;
+  padding:10px;
   background:transparent;
   overflow:hidden;
   color:#334155;
@@ -12,12 +13,15 @@ body{
   height:100%;
   border-radius:12px;
   overflow:hidden;
-  clip-path:inset(0 round 12px);
   display:flex;
   flex-direction:column;
   background:#e7edf2;
-  border:1px solid rgba(255,255,255,0.4);
+  border:1px solid rgba(100,116,139,0.3);
+  box-shadow:0 1px 3px rgba(15,23,42,0.07),0 7px 22px rgba(15,23,42,0.11);
 }
+body.window-maximized{padding:0}
+body.window-maximized #app-root{border-radius:0;border-color:transparent;box-shadow:none}
+body.window-maximized .modal-mask,body.window-maximized .drop-mask{border-radius:0}
 .title-bar{
   height:38px;
   display:flex;
@@ -36,12 +40,30 @@ body{
 }
 .ctrl-btn{
   width:26px;height:26px;
+  padding:0;border:0;
   border-radius:6px;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;
   background:#e2e8f0;
+  color:inherit;font:inherit;
 }
+.maximize-restore-icon{display:block;position:relative;width:11px;height:10px;border:1.5px solid currentColor}
+.ctrl-btn.is-maximized .maximize-restore-icon{border:0}
+.ctrl-btn.is-maximized .maximize-restore-icon::before,.ctrl-btn.is-maximized .maximize-restore-icon::after{content:"";position:absolute;width:8px;height:7px;border:1.5px solid currentColor}
+.ctrl-btn.is-maximized .maximize-restore-icon::before{top:0;right:0}
+.ctrl-btn.is-maximized .maximize-restore-icon::after{bottom:0;left:0;background:inherit}
 .ctrl-btn:hover{background:rgba(0,0,0,0.06)}
+.ctrl-btn.close{position:relative;font-size:0}
+.ctrl-btn.close::before,.ctrl-btn.close::after{
+  content:"";
+  position:absolute;
+  width:12px;
+  height:1.5px;
+  border-radius:1px;
+  background:currentColor;
+}
+.ctrl-btn.close::before{transform:rotate(45deg)}
+.ctrl-btn.close::after{transform:rotate(-45deg)}
 .ctrl-btn.close:hover{background:#ef4444;color:#ffffff}
 .glass{
   background:rgba(255,255,255,0.32);
@@ -82,6 +104,7 @@ aside{
 .nav-item:hover{background:rgba(255,255,255,0.55)}
 .nav-item.active{background:rgba(99,102,241,0.28)}
 .nav-item.active svg{fill:#4f46e5}
+.bottom-nav-item{background:rgba(255,255,255,0.35)}
 .bottom-btn{
   height:42px;
   display:flex;
@@ -222,6 +245,8 @@ select.sort-select{
   inset:0;
   z-index:99999;
   background:rgba(0,0,0,0.18);
+  border-radius:12px;
+  overflow:hidden;
 }
 .drop-item{
   padding:8px 14px;cursor:pointer;font-size:13px;
@@ -231,12 +256,43 @@ select.sort-select{
 .modal-mask{
   position:fixed;inset:0;background:rgba(0,0,0,0.25);
   display:flex;align-items:center;justify-content:center;z-index:99999;
+  border-radius:12px;overflow:hidden;
 }
 .modal-box{
   width:440px;padding:22px;
 }
 .detail-modal{
   width:480px;
+  max-height:calc(100vh - 48px);
+  display:flex;
+  flex-direction:column;
+}
+.detail-content{
+  min-height:0;
+  overflow-y:auto;
+  padding-right:6px;
+}
+.detail-content::-webkit-scrollbar{width:5px}
+.detail-content::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:3px}
+.detail-modal>.modal-footer{flex-shrink:0}
+.detail-row{
+  display:grid;
+  grid-template-columns:78px minmax(0,1fr);
+  column-gap:12px;
+  align-items:start;
+  margin-bottom:11px;
+  font-size:13px;
+  line-height:1.6;
+}
+.detail-label{
+  color:#64748b;
+  text-align:right;
+  white-space:nowrap;
+}
+.detail-row>span:last-child{
+  min-width:0;
+  color:#1e293b;
+  overflow-wrap:anywhere;
 }
 .confirm-modal{width:400px}
 .confirm-modal h3{color:#1e293b}
@@ -252,12 +308,18 @@ select.sort-select{
   gap:8px;
 }
 .form-row.inline label{margin-bottom:0}
+.form-hint{margin:-6px 0 14px;color:#64748b;font-size:12px;line-height:1.45}
 .form-row input,.form-row select,.form-row textarea{
   width:100%;padding:10px;border:none;border-radius:9px;
   background:rgba(255,255,255,0.55);outline:none;
   color:#1e293b;
 }
 .form-row input:disabled{opacity:0.48;cursor:not-allowed}
+.form-row input.field-invalid{
+  outline:2px solid rgba(220,38,38,0.45);
+  background:rgba(254,242,242,0.78);
+}
+.field-error{margin:5px 0 0;color:#b91c1c;font-size:12px;line-height:1.35}
 .form-row textarea{resize:none;height:80px}
 .form-row.inline input{width:auto}
 .modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}

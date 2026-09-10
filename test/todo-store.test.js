@@ -28,6 +28,17 @@ test("todo CRUD, archive, mute and reminder state persist independently", (t) =>
   let store = loadStore(directory);
   store.loadTodoFile();
   assert.equal(store.addTodoItem({ text: "  " }), null);
+  const limited = store.addTodoItem({ text: "T".repeat(100), desc: "D".repeat(700) });
+  assert.equal(limited.text.length, 80);
+  assert.equal(limited.desc.length, 500);
+  const limitedUpdate = store.updateTodo({
+    id: limited.id,
+    text: "U".repeat(100),
+    desc: "N".repeat(700),
+  });
+  assert.equal(limitedUpdate.text.length, 80);
+  assert.equal(limitedUpdate.desc.length, 500);
+  assert.equal(store.deleteTodo(limited.id), true);
   const item = store.addTodoItem({ text: "Test", date: "2026-09-03", remind: true });
   assert.equal(item.remindTime, "09:00");
   store.getTodoList()[0].text = "Changed clone";
@@ -37,10 +48,23 @@ test("todo CRUD, archive, mute and reminder state persist independently", (t) =>
   assert.equal(store.setArchived(item.id, false).archived, false);
   assert.equal(store.muteTodoRemind(item.id).muteRemind, true);
   assert.equal(store.addToToday(item.id).muteRemind, false);
-  store.markRemindersSent([{ id: item.id, key: "once:2026-09-03:09:00" }]);
+  const reminderKey = "once:2026-09-03:09:00";
+  store.markRemindersSent([{ id: item.id, key: reminderKey }]);
+  const snoozed = store.snoozeTodoReminder(
+    item.id,
+    reminderKey,
+    5,
+    new Date("2026-09-03T09:00:00.000Z"),
+  );
+  assert.equal(snoozed.snoozedReminderKey, reminderKey);
+  assert.equal(snoozed.snoozedUntil, "2026-09-03T09:05:00.000Z");
   store = loadStore(directory);
   store.loadTodoFile();
-  assert.equal(store.getTodoList()[0].lastReminderKey, "once:2026-09-03:09:00");
+  assert.equal(store.getTodoList()[0].lastReminderKey, reminderKey);
+  assert.equal(store.getTodoList()[0].snoozedUntil, "2026-09-03T09:05:00.000Z");
+  store.markRemindersSent([{ id: item.id, key: reminderKey }]);
+  assert.equal(store.getTodoList()[0].snoozedReminderKey, "");
+  assert.equal(store.getTodoList()[0].snoozedUntil, "");
   assert.equal(store.updateTodo({ id: item.id, remindTime: "10:00" }).lastReminderKey, "");
   assert.equal(store.deleteTodo(item.id), true);
   assert.equal(store.deleteTodo(item.id), false);
@@ -59,6 +83,8 @@ test("legacy cycles receive a stable start date and reminder time", (t) => {
   const original = store.loadTodoFile()[0];
   assert.match(original.date, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(original.remindTime, "09:00");
+  assert.equal(original.snoozedReminderKey, "");
+  assert.equal(original.snoozedUntil, "");
   store = loadStore(directory);
   assert.equal(store.loadTodoFile()[0].date, original.date);
   assert.equal(store.addTodoItem({ text: "Next" }).id, 8);

@@ -78,6 +78,7 @@
     return false;
   }
 
+
   function getReminderCandidate(item, now = new Date()) {
     if (!item || !item.remind || item.muteRemind || item.archived) return null;
 
@@ -98,13 +99,35 @@
     }
 
     dueAt.setHours(hour, minute, 0, 0);
-    if (now < dueAt || item.lastReminderKey === key) return null;
+    if (now < dueAt) return null;
+
+    const reminderDate = item.isCycle ? today : item.date;
+    const reminderTime = time;
+    let isSnoozed = false;
+    if (item.lastReminderKey === key) {
+      const snoozedUntil = new Date(item.snoozedUntil);
+      if (
+        item.snoozedReminderKey !== key ||
+        Number.isNaN(snoozedUntil.getTime()) ||
+        now < snoozedUntil
+      ) {
+        return null;
+      }
+      isSnoozed = true;
+    }
 
     return {
       id: Number(item.id),
       key,
       title: "MyTodo 提醒",
-      body: item.isCycle ? `${item.text}（循环任务）` : item.text,
+      body: String(item.text || ""),
+      description: String(item.desc || ""),
+      dueDate: reminderDate,
+      remindTime: reminderTime,
+      isSnoozed,
+      priority: ["low", "mid", "high"].includes(item.priority) ? item.priority : "mid",
+      isCycle: !!item.isCycle,
+      cycleType: item.isCycle ? String(item.cycleType || "") : "",
     };
   }
 
