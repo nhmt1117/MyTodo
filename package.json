@@ -1,6 +1,6 @@
 {
   "name": "mytodo",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "MyTodo 个人待办与循环提醒工具",
   "main": "main.js",
   "author": "nhmt",
