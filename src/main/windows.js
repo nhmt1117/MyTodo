@@ -9,7 +9,14 @@ const {
 } = require("./config");
 
 const APP_ROOT = path.join(__dirname, "..", "..");
-const APP_ICON_PATH = path.join(APP_ROOT, "MyTodo.ico");
+function getAppIconPath() {
+  const resourcesRoot = app.isPackaged && process.resourcesPath
+    ? process.resourcesPath
+    : APP_ROOT;
+  return path.join(resourcesRoot, "MyTodo.ico");
+}
+
+const APP_ICON_PATH = getAppIconPath();
 const APP_USER_MODEL_ID = "com.nhmt.mytodo";
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
 const REMINDER_WIN_SIZE = { width: 410, height: 276 };

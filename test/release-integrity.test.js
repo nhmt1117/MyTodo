@@ -11,12 +11,13 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.1");
+  assert.equal(pkg.version, "2.0.2");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
   assert.equal(pkg.build.productName, "MyTodo");
   assert.equal(pkg.build.electronDist, "node_modules/electron/dist");
+  assert.deepEqual(pkg.build.extraResources, [{ from: "MyTodo.ico", to: "MyTodo.ico" }]);
   assert.deepEqual(pkg.build.publish, {
     provider: "generic",
     url: "https://github.com/nhmt1117/MyTodo/releases/latest/download",
@@ -176,7 +177,7 @@ test("main window preserves rounded opaque content and native controls", () => {
   assert.match(windows, /minWidth: 860,[\s\S]*?minHeight: 680/);
   assert.match(windows, /transparent: true,[\s\S]*?backgroundColor: "#00000000"/);
   assert.match(windows, /frame: false,[\s\S]*?hasShadow: true,[\s\S]*?resizable: true/);
-  assert.match(windows, /const APP_ICON_PATH = path\.join\(APP_ROOT, "MyTodo\.ico"\);/);
+  assert.match(windows, /const APP_ICON_PATH = getAppIconPath\(\);/);
   assert.match(windows, /const APP_USER_MODEL_ID = "com\.nhmt\.mytodo";/);
   assert.match(windows, /mainWindow\.setAppDetails\(\{[\s\S]*?appId: APP_USER_MODEL_ID,[\s\S]*?appIconPath: APP_ICON_PATH,[\s\S]*?appIconIndex: 0/);
   assert.match(windows, /new Tray\(APP_ICON_PATH\)/);
@@ -233,8 +234,10 @@ test("Windows installer update flow uses GitHub release assets and explicit user
   assert.match(workflow, /tags:[\s\S]*?- "\*"/);
   assert.match(workflow, /if \(\$version -ne "\$\{\{ github\.ref_name \}\}"\)/);
   assert.match(workflow, /\$asset = "dist\/MyTodo-Setup-\$version\.exe"/);
+  assert.match(workflow, /\$assets = @\(\$asset, "\$asset\.blockmap", "dist\/latest\.yml"\)/);
+  assert.match(workflow, /gh release upload \$tag \$assets --clobber/);
   assert.match(workflow, /gh release create[\s\S]*?--notes-file/);
-  assert.doesNotMatch(workflow, /release upload \$tag \$assets|--draft/);
+  assert.doesNotMatch(workflow, /--draft/);
   assert.doesNotMatch(workflow, /runs-on: (?:ubuntu|macos)/);
 });
 
@@ -250,6 +253,8 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
   assert.equal(pkg.build.nsis.include, "build/installer.nsh");
   assert.equal(pkg.build.nsis.allowToChangeInstallationDirectory, true);
   assert.match(installer, /!macro customInit[\s\S]*?ReadRegStr \$InstalledVersion[\s\S]*?\$\{VersionCompare\}/);
+  assert.match(installer, /Function AbortIfMyTodoRunning[\s\S]*?nsExec::Exec[\s\S]*?tasklist[\s\S]*?Quit/);
+  assert.match(installer, /!macro customCheckAppRunning[\s\S]*?Call AbortIfMyTodoRunning/);
   assert.match(installer, /\$VersionComparison == "1"[\s\S]*?不允许降级安装/);
   assert.match(installer, /重新安装相同版本[\s\S]*?mytodo_same_version_continue/);
   assert.match(installer, /即将升级到 MyTodo[\s\S]*?mytodo_upgrade_continue/);
@@ -305,6 +310,7 @@ test("desktop release protects one local instance and exposes recovery tools", (
   assert.match(windows, /function destroyTray\(\)[\s\S]*?tray\.destroy\(\)/);
   assert.match(windows, /function quitApplication\(\)[\s\S]*?destroyTray\(\)[\s\S]*?app\.quit\(\)/);
   assert.match(windows, /tray\.on\("click"[\s\S]*?showMainWindow\(\)/);
+  assert.match(windows, /function getAppIconPath\(\)[\s\S]*?process\.resourcesPath[\s\S]*?MyTodo\.ico/);
   assert.match(windows, /trayNoticeShown[\s\S]*?tray\.displayBalloon/);
   assert.match(index, /id="openDataLocationBtn"/);
   assert.match(index, /id="exportDataBackupBtn"/);

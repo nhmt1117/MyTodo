@@ -2,11 +2,11 @@
 
 MyTodo 是一款基于 Electron 的本地个人待办应用。2.0 重新整理了首页、日历、任务编辑和提醒系统：任务只在统一编辑窗口中维护，日历专注查看时间分布，提醒根据优先级提前介入。
 
-当前版本：**2.0.1**。目前主要面向 Windows x64；macOS 和 Linux 虽保留构建配置，但尚未完成发布验证。
+当前版本：**2.0.2**。目前主要面向 Windows x64；macOS 和 Linux 虽保留构建配置，但尚未完成发布验证。
 
 ## 安装与使用
 
-普通用户下载 Release 中的 `MyTodo-Setup-2.0.1.exe`，按向导安装即可，不需要 Node.js。关闭主窗口后应用会留在系统托盘继续检查提醒；完全退出请在托盘菜单中选择“退出程序”。
+普通用户下载 Release 中的 `MyTodo-Setup-2.0.2.exe`，按向导安装即可，不需要 Node.js。关闭主窗口后应用会留在系统托盘继续检查提醒；完全退出请在托盘菜单中选择“退出程序”。
 
 主界面包含三个区域：
 
@@ -119,7 +119,7 @@ npm run build:win
 npm run verify:release
 ```
 
-启用自动更新的 Release 必须同时上传安装包、对应的 `.blockmap`、`latest.yml` 和 `SHA256SUMS.txt`，不要分发工作目录或测试数据。当前发布策略只提供安装包，因此应用内自动更新暂不可用；后续需要恢复时，应重新附带完整更新元数据。
+启用自动更新的 Release 必须同时上传安装包、对应的 `.blockmap` 和 `latest.yml`，不要分发工作目录或测试数据。普通用户手动安装时只需下载 `.exe`；其余两个文件由已安装的 MyTodo 在后台检查和下载更新时自动使用。
 
 ## Windows 安装
 
@@ -131,7 +131,7 @@ npm run verify:release
 
 自动更新仅在 Windows NSIS 安装版中启用；开发模式、便携版和非 Windows 平台不会连接更新服务。应用启动 30 秒后自动检查，之后每 6 小时检查一次，也可以在“设置 → 关于”中手动检查。发现版本后由用户确认下载，下载完成后仍需点击“重启并安装”，不会强制关闭应用。
 
-仓库内的 `.github/workflows/release-windows.yml` 会在推送与 `package.json` 版本一致的版本标签（例如 `2.0.0`）后运行检查、构建 Windows 安装包并发布 Release。当前工作流只上传安装包，并写入中文发布说明；若要重新启用应用内自动更新，需要调整工作流以附带 `.blockmap`、`latest.yml` 和校验文件。
+仓库内的 `.github/workflows/release-windows.yml` 会在推送与 `package.json` 版本一致的版本标签（例如 `2.0.2`）后运行检查、构建 Windows 安装包并发布 Release。工作流会上传安装包、`.blockmap` 和 `latest.yml`，并写入面向用户的中文发布说明。
 
 ## 项目结构
 

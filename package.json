@@ -1,6 +1,6 @@
 {
   "name": "mytodo",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "MyTodo 个人待办与循环提醒工具",
   "main": "main.js",
   "author": "nhmt",
@@ -36,7 +36,6 @@
       "renderer/**/*",
       "src/**/*",
       "wordlist.json",
-      "MyTodo.ico",
       "README.md",
       "CHANGELOG.md",
       "V1_RELEASE_CHECKLIST.md",
@@ -48,6 +47,12 @@
       "!dist"
     ],
     "asar": true,
+    "extraResources": [
+      {
+        "from": "MyTodo.ico",
+        "to": "MyTodo.ico"
+      }
+    ],
     "electronDist": "node_modules/electron/dist",
     "win": {
       "target": "nsis",

@@ -10,6 +10,19 @@ Var VersionComparison
 Var InstallerAutoStart
 Var AutoStartCheckbox
 
+Function AbortIfMyTodoRunning
+  nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_FILENAME}.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\"${APP_FILENAME}.exe\""`
+  Pop $0
+  ${If} $0 == 0
+    MessageBox MB_OK|MB_ICONEXCLAMATION|MB_TOPMOST "MyTodo 正在运行。请先从右下角托盘中选择“退出程序”，再重新运行安装包。"
+    Quit
+  ${EndIf}
+FunctionEnd
+
+!macro customCheckAppRunning
+  Call AbortIfMyTodoRunning
+!macroend
+
 Function EnsureMyTodoInstallDirectory
   StrCpy $R0 "$INSTDIR" 1 -1
   ${If} $R0 == "\"
@@ -61,6 +74,7 @@ FunctionEnd
 
 !macro customInit
   StrCpy $InstallerAutoStart "0"
+  Call AbortIfMyTodoRunning
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}"
   ${If} $0 != ""
     StrCpy $InstallerAutoStart "1"

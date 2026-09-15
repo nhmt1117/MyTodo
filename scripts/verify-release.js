@@ -10,7 +10,7 @@ const output = path.join(root, pkg.build.directories.output);
 const archive = path.join(output, "win-unpacked", "resources", "app.asar");
 const expectedFiles = [
   "main.js", "preload.js", "index.html", "float.html", "reminder.html", "wordlist.json",
-  "MyTodo.ico", "README.md", "LICENSE",
+  "README.md", "LICENSE",
   "CHANGELOG.md", "V1_RELEASE_CHECKLIST.md", "V1_RELEASE_TEST_REPORT.md",
   "V2_RELEASE_CHECKLIST.md", "V2_RELEASE_TEST_REPORT.md",
 ];
@@ -99,6 +99,11 @@ assert.match(updateInfo, /sha512:\s*\S+/);
 const packagedUpdateConfig = fs.readFileSync(path.join(output, "win-unpacked", "resources", "app-update.yml"), "utf8");
 assert.match(packagedUpdateConfig, /provider:\s*generic/);
 assert.match(packagedUpdateConfig, /url:\s*https:\/\/github\.com\/nhmt1117\/MyTodo\/releases\/latest\/download/);
+assert.deepEqual(
+  fs.readFileSync(path.join(output, "win-unpacked", "resources", "MyTodo.ico")),
+  fs.readFileSync(path.join(root, "MyTodo.ico")),
+  "Runtime icon resource differs from the source icon",
+);
 
 const artifacts = [installerName];
 const checksums = artifacts.map((file) => {
