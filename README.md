@@ -131,7 +131,7 @@ npm run verify:release
 
 自动更新仅在 Windows NSIS 安装版中启用；开发模式、便携版和非 Windows 平台不会连接更新服务。应用启动 30 秒后自动检查，之后每 6 小时检查一次，也可以在“设置 → 关于”中手动检查。发现版本后点击“下载并安装”即可；下载完成会自动关闭应用、沿用原安装目录并启动精简的升级安装器。升级安装器不再显示版本确认、目录选择和开机启动选项，只保留安装进度与完成页。
 
-仓库内的 `.github/workflows/release-windows.yml` 会在推送与 `package.json` 版本一致的版本标签（例如 `v2.0.4`）后运行检查、构建 Windows 安装包并发布 Release；标签可以带 `v` 前缀。工作流会上传安装包、`.blockmap` 和 `latest.yml`，并写入面向用户的中文发布说明。
+仓库内的 `.github/workflows/release-windows.yml` 会在推送与 `package.json` 版本一致的版本标签（例如 `v2.0.5`）后运行检查、构建 Windows 安装包并发布 Release；标签可以带 `v` 前缀。工作流会上传安装包、`.blockmap` 和 `latest.yml`，并写入面向用户的中文发布说明。
 
 ## 项目结构
 

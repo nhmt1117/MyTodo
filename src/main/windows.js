@@ -90,17 +90,20 @@ function destroyManagedWindows() {
   reminderQueue.length = 0;
 }
 
-function quitApplication() {
-  if (isQuitting) return false;
+function prepareForApplicationQuit() {
   markQuitting();
   destroyTray();
   destroyManagedWindows();
-  app.quit();
 
-  // app.quit normally triggers Electron's full shutdown lifecycle. This only
-  // handles a renderer or native handle that refuses to release in time.
+  if (quitFallbackTimer) return;
   quitFallbackTimer = setTimeout(() => app.exit(0), 1500);
-  if (typeof quitFallbackTimer.unref === "function") quitFallbackTimer.unref();
+  quitFallbackTimer.unref?.();
+}
+
+function quitApplication() {
+  if (isQuitting) return false;
+  prepareForApplicationQuit();
+  app.quit();
   return true;
 }
 
@@ -665,6 +668,7 @@ module.exports = {
   moveFloatWindow,
   notifyTodoDataChanged,
   notifyUpdateStatus,
+  prepareForApplicationQuit,
   prepareReminderWindow,
   quitApplication,
   requestCloseMainWindow,

@@ -68,6 +68,10 @@ Function BrowseInstallDirectory
 FunctionEnd
 
 Function InstallDirectoryPageCreate
+  ${If} $IsInAppUpdate == "1"
+    Abort
+  ${EndIf}
+
   ${If} ${Silent}
     Abort
   ${EndIf}
@@ -123,20 +127,22 @@ Function StartApp
 FunctionEnd
 
 !macro customInit
+  StrCpy $IsInAppUpdate "0"
+  ${If} ${isUpdated}
+    StrCpy $IsInAppUpdate "1"
+  ${EndIf}
+
   ${If} ${UAC_IsInnerInstance}
     Return
   ${EndIf}
 
-  ${If} ${isUpdated}
-    StrCpy $IsInAppUpdate "1"
+  ${If} $IsInAppUpdate == "1"
     ReadRegStr $0 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "InstallLocation"
     ${If} $0 != ""
       StrCpy $INSTDIR "$0"
     ${EndIf}
     Return
   ${EndIf}
-
-  StrCpy $IsInAppUpdate "0"
 
   ReadRegStr $InstalledVersion SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
   ${If} $InstalledVersion != ""
@@ -158,7 +164,6 @@ FunctionEnd
 !macroend
 
 !macro customPageAfterChangeDir
-  !insertmacro skipPageIfUpdated
   PageEx custom
     PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave
   PageExEnd

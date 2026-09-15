@@ -58,7 +58,7 @@ function loadWindows(options = {}) {
   }
 
   const electron = {
-    app: { isPackaged: false },
+    app: { isPackaged: false, exit: () => {} },
     BrowserWindow: FakeBrowserWindow,
     Menu: {},
     Tray: class {},
@@ -168,4 +168,14 @@ test("a reminder window that remains visible after hide is rebuilt", async () =>
   assert.equal(targetWindow.destroyed, true);
   assert.equal(createdWindows.length, 2);
   assert.equal(createdWindows[1].visible, false);
+});
+
+test("application shutdown destroys the hidden reminder window", async () => {
+  const { windows, createdWindows } = loadWindows();
+  await windows.prepareReminderWindow();
+  const targetWindow = createdWindows[0];
+
+  assert.equal(targetWindow.destroyed, false);
+  windows.prepareForApplicationQuit();
+  assert.equal(targetWindow.destroyed, true);
 });

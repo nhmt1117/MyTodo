@@ -639,6 +639,7 @@ button{outline:none}
 #dataHealthText[data-tone="error"]{color:#b23939}
 .update-copy{flex:1}
 .update-action{min-width:88px}
+.update-progress-detail{color:#596676;font-size:10px;font-variant-numeric:tabular-nums;line-height:14px}
 .update-progress{
   width:min(280px,100%);
   height:5px;

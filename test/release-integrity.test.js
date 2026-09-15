@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.4");
+  assert.equal(pkg.version, "2.0.5");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -249,8 +249,11 @@ test("Windows installer update flow uses GitHub release assets and direct upgrad
   assert.match(preload, /onUpdateStatus:[\s\S]*?ipcRenderer\.on\("update-status"/);
   assert.match(index, /id="autoCheckUpdatesCheck"/);
   assert.match(index, /id="updateProgress"/);
+  assert.match(index, /id="updateProgressDetail"/);
   assert.match(index, /id="updateActionButton"/);
   assert.match(renderer, /function renderUpdateState\(nextState, announce\)/);
+  assert.match(renderer, /function formatUpdateRate\(bytesPerSecond\)/);
+  assert.match(renderer, /正在下载 " \+ Math\.round\(percent\) \+ "%"/);
   assert.match(renderer, /window\.electronAPI\.downloadUpdate\(\)/);
   assert.match(renderer, /buttonText = "下载并安装 " \+ version/);
   assert.doesNotMatch(renderer, /重启并安装/);
@@ -288,8 +291,9 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
   assert.match(installer, /即将升级到 MyTodo[\s\S]*?mytodo_upgrade_continue/);
   assert.match(installer, /Function EnsureMyTodoInstallDirectory[\s\S]*?\$\{GetFileName\}[\s\S]*?\\\$\{APP_FILENAME\}/);
   assert.match(installer, /Function BrowseInstallDirectory[\s\S]*?SelectFolderDialog[\s\S]*?EnsureMyTodoInstallDirectory[\s\S]*?NSD_SetText/);
-  assert.match(installer, /!macro customInit[\s\S]*?\$\{If\} \$\{isUpdated\}[\s\S]*?StrCpy \$IsInAppUpdate "1"[\s\S]*?InstallLocation[\s\S]*?StrCpy \$INSTDIR[\s\S]*?Return/);
-  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?skipPageIfUpdated[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave/);
+  assert.match(installer, /!macro customInit[\s\S]*?\$\{If\} \$\{isUpdated\}[\s\S]*?StrCpy \$IsInAppUpdate "1"[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?InstallLocation[\s\S]*?StrCpy \$INSTDIR[\s\S]*?Return/);
+  assert.match(installer, /Function InstallDirectoryPageCreate[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?Abort[\s\S]*?nsDialogs::Create/);
+  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave/);
   assert.match(installer, /!macro customFinishPage[\s\S]*?MUI_FINISHPAGE_RUN_FUNCTION "StartApp"[\s\S]*?MUI_FINISHPAGE_SHOWREADME_TEXT "开机自动启动 MyTodo"/);
   assert.match(installer, /Function FinishPageShow[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?ShowWindow \$mui\.FinishPage\.ShowReadme 0/);
   assert.doesNotMatch(installer, /AutoStartPageCreate/);
@@ -336,10 +340,11 @@ test("desktop release protects one local instance and exposes recovery tools", (
   const windows = read("src/main/windows.js");
   assert.match(main, /app\.requestSingleInstanceLock\(\)/);
   assert.match(main, /app\.on\("second-instance"[\s\S]*?showMainWindow\(\)/);
-  assert.match(main, /app\.on\("before-quit"[\s\S]*?destroyTray\(\)/);
+  assert.match(main, /app\.on\("before-quit"[\s\S]*?stopReminderScheduler\(\)[\s\S]*?stopUpdateManager\(\)[\s\S]*?prepareForApplicationQuit\(\)/);
   assert.match(main, /showStartupStorageNotice\(\)/);
   assert.match(windows, /function destroyTray\(\)[\s\S]*?tray\.destroy\(\)/);
-  assert.match(windows, /function quitApplication\(\)[\s\S]*?destroyTray\(\)[\s\S]*?destroyManagedWindows\(\)[\s\S]*?app\.quit\(\)[\s\S]*?app\.exit\(0\)/);
+  assert.match(windows, /function prepareForApplicationQuit\(\)[\s\S]*?destroyTray\(\)[\s\S]*?destroyManagedWindows\(\)[\s\S]*?app\.exit\(0\)/);
+  assert.match(windows, /function quitApplication\(\)[\s\S]*?prepareForApplicationQuit\(\)[\s\S]*?app\.quit\(\)/);
   assert.match(windows, /function requestCloseMainWindow\(\)[\s\S]*?close-confirmation-requested/);
   assert.match(windows, /function resolveCloseMainWindow\(action, dontAskAgain = false\)[\s\S]*?closeWithoutPromptAction[\s\S]*?config: updatedConfig/);
   assert.match(windows, /function cancelCloseMainWindow\(\)[\s\S]*?closePromptPending = false/);

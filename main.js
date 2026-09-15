@@ -14,9 +14,8 @@ const { showStartupStorageNotice } = require("./src/main/supportTools");
 const {
   createMainWindow,
   createTray,
-  destroyTray,
-  markQuitting,
   notifyUpdateStatus,
+  prepareForApplicationQuit,
   prepareReminderWindow,
   showMainWindow,
   showReminder,
@@ -60,8 +59,7 @@ if (!hasSingleInstanceLock) {
   app.on("before-quit", () => {
     stopReminderScheduler();
     stopUpdateManager();
-    markQuitting();
-    destroyTray();
+    prepareForApplicationQuit();
   });
 
   app.on("window-all-closed", () => {

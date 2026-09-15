@@ -828,12 +828,20 @@ function renderStorageStatus(status) {
   target.dataset.tone = status.state || "error";
 }
 
+function formatUpdateRate(bytesPerSecond) {
+  const value = Number(bytesPerSecond) || 0;
+  if (value <= 0) return "";
+  if (value < 1024 * 1024) return Math.max(1, Math.round(value / 1024)) + " KB/s";
+  return (value / 1024 / 1024).toFixed(1) + " MB/s";
+}
+
 function renderUpdateState(nextState, announce) {
   if (!nextState || typeof nextState !== "object") return;
   updateState = { ...nextState };
   const phase = updateState.phase || "idle";
   const version = updateState.availableVersion ? "v" + updateState.availableVersion : "";
   const button = $("#updateActionButton");
+  const progressDetail = $("#updateProgressDetail");
   const progress = $("#updateProgress");
   const progressBar = $("#updateProgressBar");
   const percent = Math.max(0, Math.min(100, Number(updateState.percent) || 0));
@@ -866,6 +874,11 @@ function renderUpdateState(nextState, announce) {
   button.classList.toggle("primary", action === "download" || action === "installing");
   button.classList.toggle("secondary", action === "check");
   progress.classList.toggle("hidden", phase !== "downloading");
+  progressDetail.classList.toggle("hidden", phase !== "downloading");
+  if (phase === "downloading") {
+    const speed = formatUpdateRate(updateState.bytesPerSecond);
+    progressDetail.textContent = "正在下载 " + Math.round(percent) + "%" + (speed ? " · " + speed : "");
+  }
   progress.setAttribute("aria-valuenow", String(Math.round(percent)));
   progressBar.style.width = percent + "%";
 
