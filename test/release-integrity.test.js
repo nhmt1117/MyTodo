@@ -17,7 +17,10 @@ test("release metadata is complete and consistent", () => {
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
   assert.equal(pkg.build.productName, "MyTodo");
   assert.equal(pkg.build.electronDist, "node_modules/electron/dist");
-  assert.deepEqual(pkg.build.extraResources, [{ from: "MyTodo.ico", to: "MyTodo.ico" }]);
+  assert.deepEqual(pkg.build.extraResources, [
+    { from: "MyTodo.ico", to: "MyTodo.ico" },
+    { from: "MyTodo.ico", to: "MyTodoTaskbar.ico" },
+  ]);
   assert.deepEqual(pkg.build.publish, {
     provider: "generic",
     url: "https://github.com/nhmt1117/MyTodo/releases/latest/download",
@@ -65,12 +68,22 @@ test("2.0 uses one task editor and separates calendar from editing", () => {
   assert.match(index, /id="taskTitle" maxlength="80"/);
   assert.match(index, /id="taskDescription" maxlength="500"/);
   assert.match(index, /id="taskReminderMode"/);
-  assert.match(index, /id="taskSchedule"/);
+  assert.match(index, /id="reminderOffsets"[\s\S]*?data-offset="10080"[\s\S]*?data-offset="4320"[\s\S]*?data-offset="1440"[\s\S]*?data-offset="120"[\s\S]*?data-offset="0"/);
+  assert.doesNotMatch(index, /id="taskRecommendation"|id="taskReminderCount"/);
+  assert.doesNotMatch(index, /id="taskSchedule"/);
   assert.match(index, /id="calendarBody"/);
   assert.match(index, /id="dayTaskList"/);
   assert.doesNotMatch(index, /id="eTitle"|id="nTitle"|id="cTitle"/);
   assert.match(renderer, /function openTaskModal\(item, datePreset\)/);
   assert.match(renderer, /function updateReminderPreview\(\)/);
+  assert.match(renderer, /function getCustomOffsets\(\)[\s\S]*?selectedCustomReminderOffsets/);
+  assert.match(renderer, /function renderReminderOffsetButtons\(offsets, interactive, displayEntries = \[\]\)[\s\S]*?button\.disabled = !interactive[\s\S]*?reminder-offset-time/);
+  assert.match(renderer, /#reminderOffsets"\)\.addEventListener\("click"[\s\S]*?selectedReminderMode !== "custom"/);
+  assert.match(styles, /\.reminder-offset\.selected\{[\s\S]*?background:#e4e5ff/);
+  assert.match(styles, /\.reminder-offset:disabled\{opacity:1;cursor:default}/);
+  assert.match(styles, /\.reminder-modes \.segment\.active:hover\{color:#3730a3;background:#e4e5ff}/);
+  assert.match(renderer, /customReminderOffsets: Object\.keys\(reminderOffsetLabels\)\.map\(Number\)[\s\S]*?renderReminderOffsetButtons\(recurrence\.getReminderOffsets\(draft\), isCustomMode, displayEntries\)/);
+  assert.match(styles, /\.reminder-offset-time\{[\s\S]*?font-variant-numeric:tabular-nums/);
   assert.match(renderer, /function tasksOnDate\(dateValue\)/);
   assert.match(renderer, /window\.electronAPI\.getTodoList\(\)/);
   assert.doesNotMatch(renderer, /calendarTodoCache|showLoading/);
@@ -115,6 +128,7 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(preload, /onTodoDataChanged:[\s\S]*?ipcRenderer\.on\("todo-data-changed"/);
   assert.match(reminderHtml, /data-minutes="15"[\s\S]*?data-minutes="60"[\s\S]*?data-minutes="tomorrow"[\s\S]*?data-action="skip"/);
   assert.match(reminderHtml, /id="primaryActionButton"/);
+  assert.match(reminderHtml, /src="\.\/assets\/mytodo-icon-source\.png"/);
   assert.match(reminderHtml, /id="notificationSound" src="\.\/assets\/soft-bell-ding\.mp3"/);
   assert.ok(fs.statSync(path.join(root, "assets", "soft-bell-ding.mp3")).size > 0);
   assert.match(reminderRenderer, /function playNotificationSound\(payload\)[\s\S]*?notificationSound\.play\(\)/);
@@ -122,8 +136,7 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(reminderRenderer, /分钟后（" \+ autoCloseSeconds \+ " 秒）/);
   assert.match(reminderRenderer, /submitAction\("snooze", \{ minutes: DEFAULT_SNOOZE_MINUTES \}\)/);
   assert.match(reminderRenderer, /submitAction\("skip"\)/);
-  assert.match(reminderCss, /\.reminder-root\{[\s\S]*?background:#f8fafc;[\s\S]*?cursor:pointer}/);
-  assert.doesNotMatch(reminderCss, /\.reminder-root\{[^}]*?(?:box-shadow|backdrop-filter):/);
+  assert.match(reminderCss, /\.reminder-root\{[\s\S]*?background:rgba\(244,247,250,\.9\);[\s\S]*?box-shadow:0 10px 28px rgba\(54,65,80,\.15\),0 2px 8px rgba\(54,65,80,\.08\);[\s\S]*?backdrop-filter:blur\(14px\);/);
   assert.match(reminderCss, /\.reminder-root\[data-kind="summary"\] #taskDescription\{[\s\S]*?white-space:pre-line/);
   assert.match(reminderCss, /\.snooze-menu\{[\s\S]*?background:rgba\(248,250,252,\.82\);[\s\S]*?backdrop-filter:blur\(14px\) saturate\(120%\);/);
   assert.match(reminderRenderer, /kind === "summary" \? "open" : "complete"/);
@@ -179,7 +192,7 @@ test("main window preserves rounded opaque content and native controls", () => {
   assert.match(windows, /frame: false,[\s\S]*?hasShadow: true,[\s\S]*?resizable: true/);
   assert.match(windows, /const APP_ICON_PATH = getAppIconPath\(\);/);
   assert.match(windows, /const APP_USER_MODEL_ID = "com\.nhmt\.mytodo";/);
-  assert.match(windows, /mainWindow\.setAppDetails\(\{[\s\S]*?appId: APP_USER_MODEL_ID,[\s\S]*?appIconPath: APP_ICON_PATH,[\s\S]*?appIconIndex: 0/);
+  assert.match(windows, /function applyTaskbarDetails\(targetWindow\)[\s\S]*?appId: APP_USER_MODEL_ID,[\s\S]*?appIconPath: APP_TASKBAR_ICON_PATH,[\s\S]*?appIconIndex: 0/);
   assert.match(windows, /new Tray\(APP_ICON_PATH\)/);
 });
 
@@ -251,17 +264,21 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
 
   assert.equal(pkg.build.nsis.oneClick, false);
   assert.equal(pkg.build.nsis.include, "build/installer.nsh");
-  assert.equal(pkg.build.nsis.allowToChangeInstallationDirectory, true);
+  assert.equal(pkg.build.nsis.allowToChangeInstallationDirectory, false);
   assert.match(installer, /!macro customInit[\s\S]*?ReadRegStr \$InstalledVersion[\s\S]*?\$\{VersionCompare\}/);
+  assert.match(installer, /!macro customInit[\s\S]*?\$\{UAC_IsInnerInstance\}[\s\S]*?Return/);
   assert.match(installer, /Function AbortIfMyTodoRunning[\s\S]*?nsExec::Exec[\s\S]*?tasklist[\s\S]*?Quit/);
+  assert.match(installer, /检测到应用正在运行，请先关闭/);
   assert.match(installer, /!macro customCheckAppRunning[\s\S]*?Call AbortIfMyTodoRunning/);
   assert.match(installer, /\$VersionComparison == "1"[\s\S]*?不允许降级安装/);
   assert.match(installer, /重新安装相同版本[\s\S]*?mytodo_same_version_continue/);
   assert.match(installer, /即将升级到 MyTodo[\s\S]*?mytodo_upgrade_continue/);
-  assert.match(installer, /继续前请先从托盘完全退出正在运行的 MyTodo/);
   assert.match(installer, /Function EnsureMyTodoInstallDirectory[\s\S]*?\$\{GetFileName\}[\s\S]*?\\\$\{APP_FILENAME\}/);
-  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?AutoStartPageCreate/);
-  assert.match(installer, /开机自动启动 MyTodo/);
+  assert.match(installer, /Function BrowseInstallDirectory[\s\S]*?SelectFolderDialog[\s\S]*?EnsureMyTodoInstallDirectory[\s\S]*?NSD_SetText/);
+  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave/);
+  assert.doesNotMatch(installer, /!macro customPageAfterChangeDir[\s\S]*?skipPageIfUpdated/);
+  assert.match(installer, /!macro customFinishPage[\s\S]*?MUI_FINISHPAGE_RUN_FUNCTION "StartApp"[\s\S]*?MUI_FINISHPAGE_SHOWREADME_TEXT "开机自动启动 MyTodo"/);
+  assert.doesNotMatch(installer, /AutoStartPageCreate/);
   assert.match(installer, /CurrentVersion\\Run[\s\S]*?--hidden/);
   assert.match(installer, /mytodo-install-options\.json/);
   assert.match(installer, /!macro customUnInstall[\s\S]*?DeleteRegValue/);
@@ -308,21 +325,36 @@ test("desktop release protects one local instance and exposes recovery tools", (
   assert.match(main, /app\.on\("before-quit"[\s\S]*?destroyTray\(\)/);
   assert.match(main, /showStartupStorageNotice\(\)/);
   assert.match(windows, /function destroyTray\(\)[\s\S]*?tray\.destroy\(\)/);
-  assert.match(windows, /function quitApplication\(\)[\s\S]*?destroyTray\(\)[\s\S]*?app\.quit\(\)/);
+  assert.match(windows, /function quitApplication\(\)[\s\S]*?destroyTray\(\)[\s\S]*?destroyManagedWindows\(\)[\s\S]*?app\.quit\(\)[\s\S]*?app\.exit\(0\)/);
+  assert.match(windows, /function requestCloseMainWindow\(\)[\s\S]*?close-confirmation-requested/);
+  assert.match(windows, /function resolveCloseMainWindow\(action, dontAskAgain = false\)[\s\S]*?closeWithoutPromptAction[\s\S]*?config: updatedConfig/);
+  assert.match(windows, /function cancelCloseMainWindow\(\)[\s\S]*?closePromptPending = false/);
+  assert.match(windows, /APP_TASKBAR_ICON_PATH = app\.isPackaged && process\.resourcesPath[\s\S]*?MyTodoTaskbar\.ico/);
+  assert.match(windows, /appIconPath: APP_TASKBAR_ICON_PATH/);
   assert.match(windows, /tray\.on\("click"[\s\S]*?showMainWindow\(\)/);
   assert.match(windows, /function getAppIconPath\(\)[\s\S]*?process\.resourcesPath[\s\S]*?MyTodo\.ico/);
-  assert.match(windows, /trayNoticeShown[\s\S]*?tray\.displayBalloon/);
+  assert.match(ipc, /ipcMain\.on\("win-close", windows\.requestCloseMainWindow\)/);
+  assert.match(ipc, /ipcMain\.handle\("resolve-close-confirmation"[\s\S]*?resolveCloseMainWindow/);
+  assert.match(ipc, /ipcMain\.handle\("cancel-close-confirmation"[\s\S]*?cancelCloseMainWindow/);
   assert.match(index, /id="openDataLocationBtn"/);
   assert.match(index, /id="exportDataBackupBtn"/);
   assert.doesNotMatch(index, /id="openLogDirectoryBtn"|<strong>运行日志<\/strong>/);
   assert.match(index, /class="about-version-line"[\s\S]*?id="appVersion"[\s\S]*?id="updateActionButton"/);
+  assert.match(index, /\.\/assets\/mytodo-icon-source\.png/);
+  assert.doesNotMatch(index, /id="updateStatusText"|id="reminderServiceStatus"|提醒服务/);
+  assert.match(index, /id="closeToTrayPromptCheck"/);
+  assert.match(index, /id="closeAppModal"[\s\S]*?id="closeAppDontAsk"[\s\S]*?id="closeToTrayButton"[\s\S]*?id="quitAppButton"/);
   assert.match(index, /id="notificationSoundCheck"/);
-  assert.match(index, /id="reminderServiceStatus"/);
   assert.match(preload, /getStorageStatus:[\s\S]*?exportDataBackup:[\s\S]*?openLogDirectory:/);
+  assert.match(preload, /resolveCloseConfirmation:[\s\S]*?cancelCloseConfirmation:[\s\S]*?onCloseConfirmationRequested:/);
   assert.match(ipc, /get-reminder-service-status/);
   assert.match(ipc, /open-data-directory[\s\S]*?export-data-backup[\s\S]*?open-log-directory/);
   assert.match(support, /function getStorageStatus\(\)/);
-  assert.match(renderer, /function renderReminderServiceStatus\(status\)/);
+  assert.match(renderer, /closeToTrayPromptCheck[\s\S]*?saveConfigPatch\(\{ closeToTrayPrompt:/);
+  assert.match(renderer, /function showCloseAppModal\(\)[\s\S]*?closeAppModal/);
+  assert.match(renderer, /function cancelCloseAppModal\(\)[\s\S]*?cancelCloseConfirmation/);
+  assert.match(renderer, /resolveCloseConfirmation\(action, dontAskAgain\)[\s\S]*?appConfig = result\.config[\s\S]*?applyConfigToSettings\(\)/);
+  assert.match(renderer, /event\.key === "Escape"[\s\S]*?cancelCloseAppModal\(\)[\s\S]*?electronAPI\.winClose\(\)/);
 });
 
 test("development reminders are hidden and blocked in packaged builds", () => {

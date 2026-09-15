@@ -13,6 +13,7 @@ let selectedCalendarDate = recurrence.formatLocalDate(new Date());
 let selectedPriority = "mid";
 let selectedTaskType = "normal";
 let selectedReminderMode = "auto";
+let selectedCustomReminderOffsets = [4320, 1440, 0];
 let detailItem = null;
 let deleteTargetId = null;
 let refreshPending = false;
@@ -28,6 +29,13 @@ const reminderModeNames = {
   standard: "标准提醒",
   strong: "强提醒",
   custom: "自定义",
+};
+const reminderOffsetLabels = {
+  10080: "提前 7 天",
+  4320: "提前 3 天",
+  1440: "提前 1 天",
+  120: "提前 2 小时",
+  0: "截止时",
 };
 const cycleNames = { daily: "每日", weekly: "每周", monthly: "每月" };
 
@@ -468,13 +476,30 @@ function setSegmentValue(containerSelector, value) {
 }
 
 function getCustomOffsets() {
-  return $$("#customOffsets input:checked").map((input) => Number(input.value));
+  return [...selectedCustomReminderOffsets];
 }
 
 function setCustomOffsets(offsets) {
+  selectedCustomReminderOffsets = [...new Set(
+    (Array.isArray(offsets) ? offsets : []).map(Number).filter(Number.isFinite),
+  )].sort((left, right) => right - left);
+}
+
+function renderReminderOffsetButtons(offsets, interactive, displayEntries = []) {
   const selected = new Set(Array.isArray(offsets) ? offsets.map(Number) : []);
-  $$("#customOffsets input").forEach((input) => {
-    input.checked = selected.has(Number(input.value));
+  const entriesByOffset = new Map(displayEntries.map((entry) => [Number(entry.offsetMinutes), entry]));
+  $$("#reminderOffsets .reminder-offset").forEach((button) => {
+    const offset = Number(button.dataset.offset);
+    const isSelected = selected.has(offset);
+    const entry = entriesByOffset.get(offset);
+    const dateTime = entry ? formatShortDateTime(entry.reminderAt) : "未设时间";
+    const label = reminderOffsetLabels[offset] || "";
+    button.classList.toggle("selected", isSelected);
+    button.disabled = !interactive;
+    button.setAttribute("aria-pressed", String(isSelected));
+    button.setAttribute("aria-label", dateTime + " " + label);
+    button.innerHTML = '<span class="reminder-offset-time">' + escapeHtml(dateTime) +
+      '</span><span class="reminder-offset-label">' + escapeHtml(label) + "</span>";
   });
 }
 
@@ -487,7 +512,8 @@ function updateTaskTypeUi() {
 
 function updateReminderPreview() {
   const enabled = $("#taskReminderEnabled").checked;
-  $("#taskReminderConfig").classList.toggle("hidden", !enabled);
+  const reminderConfig = $("#taskReminderConfig");
+  reminderConfig.classList.toggle("hidden", !enabled);
   if (!enabled) return;
   const effectiveMode = recurrence.getEffectiveReminderMode({
     priority: selectedPriority,
@@ -497,7 +523,7 @@ function updateReminderPreview() {
   $("#reminderDefaultText").textContent = selectedReminderMode === "auto"
     ? priorityLabel + "优先级默认使用" + reminderModeNames[effectiveMode]
     : "当前使用" + reminderModeNames[selectedReminderMode];
-  $("#customOffsets").classList.toggle("hidden", selectedReminderMode !== "custom");
+  const isCustomMode = selectedReminderMode === "custom";
 
   const dateValue = $("#taskDate").value;
   const draft = {
@@ -515,18 +541,15 @@ function updateReminderPreview() {
     const next = recurrence.getNextOccurrenceDate(draft, new Date());
     occurrenceDate = next ? recurrence.formatLocalDate(next) : dateValue;
   }
-  const schedule = occurrenceDate ? recurrence.getReminderSchedule(draft, occurrenceDate) : [];
-  const effectiveLabel = reminderModeNames[recurrence.getEffectiveReminderMode(draft)];
-  let recommendation = selectedReminderMode === "auto"
-    ? "按优先级自动采用" + effectiveLabel
-    : "已选择" + reminderModeNames[selectedReminderMode];
-  if (draft.isCycle && draft.cycleType === "daily") recommendation += "，每日循环仅保留 2 小时内节点";
-  if (draft.isCycle && draft.cycleType === "weekly") recommendation += "，每周循环不使用提前 7 天节点";
-  $("#taskRecommendation").textContent = recommendation;
-  $("#taskReminderCount").textContent = schedule.length + " 个提醒节点";
-  $("#taskSchedule").innerHTML = schedule.map((entry) => {
-    return '<span class="schedule-chip">' + escapeHtml(formatShortDateTime(entry.reminderAt) + " · " + entry.reason) + '</span>';
-  }).join("");
+  const displayEntries = occurrenceDate
+    ? recurrence.getReminderSchedule({
+      ...draft,
+      isCycle: false,
+      reminderMode: "custom",
+      customReminderOffsets: Object.keys(reminderOffsetLabels).map(Number),
+    }, occurrenceDate)
+    : [];
+  renderReminderOffsetButtons(recurrence.getReminderOffsets(draft), isCustomMode, displayEntries);
 }
 
 function getLastCreatedTask() {
@@ -679,6 +702,29 @@ function closeDeleteModal() {
   $("#deleteModal").classList.add("hidden");
 }
 
+function showCloseAppModal() {
+  $("#closeAppDontAsk").checked = false;
+  $("#closeAppModal").classList.remove("hidden");
+  $("#closeToTrayButton").focus();
+}
+
+async function resolveCloseAppModal(action) {
+  if ($("#closeAppModal").classList.contains("hidden")) return;
+  const dontAskAgain = $("#closeAppDontAsk").checked;
+  $("#closeAppModal").classList.add("hidden");
+  const result = await window.electronAPI.resolveCloseConfirmation(action, dontAskAgain);
+  if (result && result.config) {
+    appConfig = result.config;
+    applyConfigToSettings();
+  }
+}
+
+async function cancelCloseAppModal() {
+  if ($("#closeAppModal").classList.contains("hidden")) return;
+  $("#closeAppModal").classList.add("hidden");
+  await window.electronAPI.cancelCloseConfirmation();
+}
+
 async function confirmDelete() {
   if (!Number.isFinite(deleteTargetId)) return;
   try {
@@ -735,9 +781,6 @@ async function triggerDevelopmentReminder() {
 async function saveConfigPatch(patch) {
   try {
     appConfig = await window.electronAPI.setGlobalConfig(patch);
-    if (["quietHoursEnabled", "quietStart", "quietEnd"].some((key) => key in patch)) {
-      await refreshReminderServiceStatus();
-    }
   } catch (error) {
     showToast("设置保存失败：" + (error.message || "请稍后重试"));
   }
@@ -746,6 +789,7 @@ async function saveConfigPatch(patch) {
 function applyConfigToSettings() {
   $("#weekStartSel").value = String(appConfig.weekStartMon !== false);
   $("#autoStartCheck").checked = !!appConfig.autoStart;
+  $("#closeToTrayPromptCheck").checked = appConfig.closeToTrayPrompt !== false;
   $("#autoCheckUpdatesCheck").checked = appConfig.autoCheckUpdates !== false;
   $("#notificationSoundCheck").checked = appConfig.notificationSound !== false;
   $("#weeklySummaryCheck").checked = appConfig.weeklySummary !== false;
@@ -784,127 +828,37 @@ function renderStorageStatus(status) {
   target.dataset.tone = status.state || "error";
 }
 
-function formatServiceCheckTime(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "尚未完成首次检查";
-  return "最近检查 " + date.toLocaleTimeString("zh-CN", { hour12: false });
-}
-
-function formatServiceResumeTime(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "安静时段结束后";
-  return date.toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function renderReminderServiceStatus(status) {
-  const label = $("#reminderServiceStatus");
-  const detail = $("#reminderServiceDetail");
-  if (!status || !status.running) {
-    label.textContent = "未运行";
-    label.dataset.tone = "error";
-    detail.textContent = "提醒调度器尚未启动";
-    return;
-  }
-  if (status.lastError) {
-    label.textContent = "异常";
-    label.dataset.tone = "error";
-    detail.textContent = "最近检查失败，可打开日志查看原因";
-    detail.title = status.lastError;
-    return;
-  }
-  if (status.quietHoursActive) {
-    label.textContent = "已暂缓";
-    label.dataset.tone = "pending";
-    detail.textContent = "安静时段中，将于 " +
-      formatServiceResumeTime(status.quietHoursResumeAt) + " 继续提醒";
-    detail.title = "自动提醒仍在运行，安静时段结束后会继续显示待处理提醒";
-    return;
-  }
-  label.textContent = "正常";
-  label.dataset.tone = "ok";
-  detail.textContent = formatServiceCheckTime(status.lastCheckAt) +
-    " · 每 " + (status.intervalSeconds || 30) + " 秒扫描，临近提醒每 " +
-    (status.precisionSeconds || 1) + " 秒校准";
-  detail.title = "";
-}
-
-async function refreshReminderServiceStatus() {
-  try {
-    renderReminderServiceStatus(await window.electronAPI.getReminderServiceStatus());
-  } catch (_error) {
-    renderReminderServiceStatus(null);
-  }
-}
-
-function formatUpdateRate(bytesPerSecond) {
-  const value = Number(bytesPerSecond) || 0;
-  if (value <= 0) return "";
-  if (value < 1024 * 1024) return Math.max(1, Math.round(value / 1024)) + " KB/s";
-  return (value / 1024 / 1024).toFixed(1) + " MB/s";
-}
-
-function getUnsupportedUpdateText(reason) {
-  if (reason === "development") return "开发模式不连接更新服务，请在安装版中测试";
-  if (reason === "portable") return "便携版不支持自动更新，请使用安装版";
-  if (reason === "not-windows") return "当前仅支持 Windows 安装版自动更新";
-  return "更新服务暂不可用";
-}
-
 function renderUpdateState(nextState, announce) {
   if (!nextState || typeof nextState !== "object") return;
   updateState = { ...nextState };
   const phase = updateState.phase || "idle";
   const version = updateState.availableVersion ? "v" + updateState.availableVersion : "";
-  const status = $("#updateStatusText");
   const button = $("#updateActionButton");
   const progress = $("#updateProgress");
   const progressBar = $("#updateProgressBar");
   const percent = Math.max(0, Math.min(100, Number(updateState.percent) || 0));
-  let statusText = "通过 GitHub Releases 检查 Windows 正式版";
   let action = "check";
   let buttonText = "检查更新";
   let disabled = false;
-  let tone = "";
 
   if (phase === "unsupported") {
-    statusText = getUnsupportedUpdateText(updateState.unsupportedReason);
     disabled = true;
   } else if (phase === "checking") {
-    statusText = "正在检查新版本…";
     buttonText = "正在检查";
     disabled = true;
-  } else if (phase === "up-to-date") {
-    statusText = "当前已是最新版本";
   } else if (phase === "available") {
-    statusText = "发现新版本 " + version + "，下载后由你决定何时安装";
     action = "download";
     buttonText = "下载 " + version;
-    tone = "available";
   } else if (phase === "downloading") {
-    const speed = formatUpdateRate(updateState.bytesPerSecond);
-    statusText = "正在下载 " + Math.round(percent) + "%" + (speed ? " · " + speed : "");
     buttonText = "正在下载";
     disabled = true;
-    tone = "available";
   } else if (phase === "downloaded") {
-    statusText = version + " 已准备好，重启后完成安装";
     action = "install";
     buttonText = "重启并安装";
-    tone = "available";
   } else if (phase === "error") {
-    statusText = updateState.supported === false
-      ? getUnsupportedUpdateText(updateState.unsupportedReason)
-      : "更新检查失败，请稍后重试";
-    tone = "error";
     disabled = updateState.supported === false;
   }
 
-  status.textContent = statusText;
-  status.dataset.tone = tone;
   button.dataset.action = action;
   button.textContent = buttonText;
   button.disabled = disabled;
@@ -1084,7 +1038,17 @@ function bindTaskModal() {
   $("#taskDate").addEventListener("change", updateReminderPreview);
   $("#taskDueTime").addEventListener("change", updateReminderPreview);
   $("#taskCycleType").addEventListener("change", updateReminderPreview);
-  $("#customOffsets").addEventListener("change", updateReminderPreview);
+  $("#reminderOffsets").addEventListener("click", (event) => {
+    if (selectedReminderMode !== "custom") return;
+    const button = event.target.closest(".reminder-offset");
+    if (!button) return;
+    const offset = Number(button.dataset.offset);
+    const offsets = new Set(getCustomOffsets());
+    if (offsets.has(offset)) offsets.delete(offset);
+    else offsets.add(offset);
+    setCustomOffsets([...offsets]);
+    updateReminderPreview();
+  });
 }
 
 function bindDetailAndDelete() {
@@ -1105,6 +1069,11 @@ function bindDetailAndDelete() {
   $("#confirmDelete").addEventListener("click", confirmDelete);
   $("#deleteModal").addEventListener("mousedown", (event) => {
     if (event.target === $("#deleteModal")) closeDeleteModal();
+  });
+  $("#closeToTrayButton").addEventListener("click", () => resolveCloseAppModal("tray"));
+  $("#quitAppButton").addEventListener("click", () => resolveCloseAppModal("quit"));
+  $("#closeAppModal").addEventListener("mousedown", (event) => {
+    if (event.target === $("#closeAppModal")) cancelCloseAppModal();
   });
   $("#globalDropMask").addEventListener("click", closeDropMenu);
 }
@@ -1130,6 +1099,9 @@ function bindCalendar() {
 
 function bindSettings() {
   $("#autoStartCheck").addEventListener("change", (event) => saveConfigPatch({ autoStart: event.target.checked }));
+  $("#closeToTrayPromptCheck").addEventListener("change", (event) => {
+    saveConfigPatch({ closeToTrayPrompt: event.target.checked });
+  });
   $("#autoCheckUpdatesCheck").addEventListener("change", (event) => {
     saveConfigPatch({ autoCheckUpdates: event.target.checked });
   });
@@ -1175,10 +1147,9 @@ function bindWindowEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (!$("#deleteModal").classList.contains("hidden")) closeDeleteModal();
-      else if (!$("#taskModal").classList.contains("hidden")) closeTaskModal();
-      else if (!$("#detailModal").classList.contains("hidden")) closeDetailModal();
-      else closeDropMenu();
+      event.preventDefault();
+      if (!$("#closeAppModal").classList.contains("hidden")) cancelCloseAppModal();
+      else window.electronAPI.winClose();
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
       event.preventDefault();
@@ -1188,6 +1159,9 @@ function bindWindowEvents() {
   window.addEventListener("focus", () => refreshTodoData());
   if (typeof window.electronAPI.onTodoDataChanged === "function") {
     window.electronAPI.onTodoDataChanged(() => refreshTodoData());
+  }
+  if (typeof window.electronAPI.onCloseConfirmationRequested === "function") {
+    window.electronAPI.onCloseConfirmationRequested(showCloseAppModal);
   }
   if (typeof window.electronAPI.onOpenTodoDetail === "function") {
     window.electronAPI.onOpenTodoDetail(async (todoId) => {
@@ -1216,14 +1190,12 @@ async function initApp() {
     dataLocation,
     initialUpdateState,
     storageStatus,
-    reminderServiceStatus,
   ] = await Promise.all([
     window.electronAPI.getAppInfo(),
     window.electronAPI.getFloatConfig(),
     window.electronAPI.getDataLocation(),
     window.electronAPI.getUpdateState(),
     window.electronAPI.getStorageStatus(),
-    window.electronAPI.getReminderServiceStatus(),
   ]);
   $("#appVersion").textContent = "v" + appInfo.version;
   $("#triggerTestReminderButton").classList.toggle("hidden", !!appInfo.isPackaged);
@@ -1232,9 +1204,6 @@ async function initApp() {
   renderDataLocation(dataLocation);
   renderStorageStatus(storageStatus);
   renderUpdateState(initialUpdateState, false);
-  renderReminderServiceStatus(reminderServiceStatus);
-  setTimeout(refreshReminderServiceStatus, 1000);
-  setInterval(refreshReminderServiceStatus, 30 * 1000);
   await refreshTodoData();
   setPage("home");
 }

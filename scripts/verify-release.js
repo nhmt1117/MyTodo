@@ -99,11 +99,13 @@ assert.match(updateInfo, /sha512:\s*\S+/);
 const packagedUpdateConfig = fs.readFileSync(path.join(output, "win-unpacked", "resources", "app-update.yml"), "utf8");
 assert.match(packagedUpdateConfig, /provider:\s*generic/);
 assert.match(packagedUpdateConfig, /url:\s*https:\/\/github\.com\/nhmt1117\/MyTodo\/releases\/latest\/download/);
-assert.deepEqual(
-  fs.readFileSync(path.join(output, "win-unpacked", "resources", "MyTodo.ico")),
-  fs.readFileSync(path.join(root, "MyTodo.ico")),
-  "Runtime icon resource differs from the source icon",
-);
+for (const iconFile of ["MyTodo.ico", "MyTodoTaskbar.ico"]) {
+  assert.deepEqual(
+    fs.readFileSync(path.join(output, "win-unpacked", "resources", iconFile)),
+    fs.readFileSync(path.join(root, "MyTodo.ico")),
+    `Runtime icon resource differs from the source icon: ${iconFile}`,
+  );
+}
 
 const artifacts = [installerName];
 const checksums = artifacts.map((file) => {

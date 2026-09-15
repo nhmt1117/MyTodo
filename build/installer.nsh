@@ -7,14 +7,13 @@
 !ifndef BUILD_UNINSTALLER
 Var InstalledVersion
 Var VersionComparison
-Var InstallerAutoStart
-Var AutoStartCheckbox
+Var DirectoryInput
 
 Function AbortIfMyTodoRunning
-  nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_FILENAME}.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\"${APP_FILENAME}.exe\""`
+  nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_FILENAME}.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\\"${APP_FILENAME}.exe\\""`
   Pop $0
   ${If} $0 == 0
-    MessageBox MB_OK|MB_ICONEXCLAMATION|MB_TOPMOST "MyTodo 正在运行。请先从右下角托盘中选择“退出程序”，再重新运行安装包。"
+    MessageBox MB_OK|MB_ICONEXCLAMATION|MB_TOPMOST "检测到应用正在运行，请先关闭"
     Quit
   ${EndIf}
 FunctionEnd
@@ -35,50 +34,81 @@ Function EnsureMyTodoInstallDirectory
   ${EndIf}
 FunctionEnd
 
-Function AutoStartPageCreate
+Function BrowseInstallDirectory
+  ${NSD_GetText} $DirectoryInput $0
+  ${If} $0 == ""
+    StrCpy $0 "$INSTDIR"
+  ${EndIf}
+  nsDialogs::SelectFolderDialog "选择 MyTodo 安装位置" "$0"
+  Pop $1
+  ${If} $1 != "error"
+    StrCpy $INSTDIR "$1"
+    Call EnsureMyTodoInstallDirectory
+    ${NSD_SetText} $DirectoryInput "$INSTDIR"
+  ${EndIf}
+FunctionEnd
+
+Function InstallDirectoryPageCreate
   ${If} ${Silent}
     Abort
   ${EndIf}
 
   Call EnsureMyTodoInstallDirectory
-  !insertmacro MUI_HEADER_TEXT "安装选项" "确认安装位置和启动方式"
-
+  !insertmacro MUI_HEADER_TEXT "选择安装位置" "选择 MyTodo 要安装的文件夹。"
   nsDialogs::Create 1018
   Pop $0
   ${If} $0 == error
     Abort
   ${EndIf}
 
-  ${NSD_CreateLabel} 0 0 100% 14u "MyTodo 将安装到："
+  ${NSD_CreateLabel} 0 0 100% 24u "选择父文件夹后，会自动添加 MyTodo 子目录。"
   Pop $0
-  ${NSD_CreateLabel} 0 20u 100% 30u "$INSTDIR"
+  ${NSD_CreateLabel} 0 34u 100% 12u "目标文件夹"
   Pop $0
-${NSD_CreateCheckbox} 0 60u 100% 18u "开机自动启动 MyTodo"
-  Pop $AutoStartCheckbox
-
-  ${If} $InstallerAutoStart == "1"
-    ${NSD_Check} $AutoStartCheckbox
-  ${EndIf}
+  ${NSD_CreateText} 0 49u 77% 12u "$INSTDIR"
+  Pop $DirectoryInput
+  ${NSD_CreateButton} 79% 49u 21% 12u "浏览..."
+  Pop $0
+  ${NSD_OnClick} $0 BrowseInstallDirectory
 
   nsDialogs::Show
 FunctionEnd
 
-Function AutoStartPageLeave
-  ${NSD_GetState} $AutoStartCheckbox $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $InstallerAutoStart "1"
-  ${Else}
-    StrCpy $InstallerAutoStart "0"
+Function InstallDirectoryPageLeave
+  ${NSD_GetText} $DirectoryInput $INSTDIR
+  Call EnsureMyTodoInstallDirectory
+FunctionEnd
+
+Function DisableAutoStart
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}"
+  ClearErrors
+  FileOpen $0 "$INSTDIR\resources\mytodo-install-options.json" w
+  ${IfNot} ${Errors}
+    FileWrite $0 '{"autoStart":false}'
+    FileClose $0
   ${EndIf}
 FunctionEnd
 
-!macro customInit
-  StrCpy $InstallerAutoStart "0"
-  Call AbortIfMyTodoRunning
-  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}"
-  ${If} $0 != ""
-    StrCpy $InstallerAutoStart "1"
+Function EnableAutoStart
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}" '"$INSTDIR\${APP_FILENAME}.exe" --hidden'
+  ClearErrors
+  FileOpen $0 "$INSTDIR\resources\mytodo-install-options.json" w
+  ${IfNot} ${Errors}
+    FileWrite $0 '{"autoStart":true}'
+    FileClose $0
   ${EndIf}
+FunctionEnd
+
+Function StartApp
+  ExecShell "open" "$INSTDIR\${APP_FILENAME}.exe"
+FunctionEnd
+
+!macro customInit
+  ${If} ${UAC_IsInnerInstance}
+    Return
+  ${EndIf}
+
+  Call AbortIfMyTodoRunning
 
   ${IfNot} ${isUpdated}
     ReadRegStr $InstalledVersion SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
@@ -89,11 +119,11 @@ FunctionEnd
         MessageBox MB_OK|MB_ICONSTOP|MB_TOPMOST "无法安装 MyTodo ${VERSION}。当前已安装版本：$InstalledVersion，安装包版本：${VERSION}。为避免数据和程序文件不兼容，MyTodo 不允许降级安装。" /SD IDOK
         Quit
       ${ElseIf} $VersionComparison == "0"
-        MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "当前已安装 MyTodo $InstalledVersion。是否重新安装相同版本 ${VERSION}？继续前请先从托盘完全退出正在运行的 MyTodo。" /SD IDYES IDYES mytodo_same_version_continue
+        MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "当前已安装 MyTodo $InstalledVersion。是否重新安装相同版本 ${VERSION}？" /SD IDYES IDYES mytodo_same_version_continue
         Quit
         mytodo_same_version_continue:
       ${Else}
-        MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "检测到已安装 MyTodo $InstalledVersion，即将升级到 MyTodo ${VERSION}。继续前请先从托盘完全退出正在运行的 MyTodo。" /SD IDYES IDYES mytodo_upgrade_continue
+        MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "检测到已安装 MyTodo $InstalledVersion，即将升级到 MyTodo ${VERSION}。" /SD IDYES IDYES mytodo_upgrade_continue
         Quit
         mytodo_upgrade_continue:
       ${EndIf}
@@ -103,28 +133,25 @@ FunctionEnd
 
 !macro customPageAfterChangeDir
   PageEx custom
-    PageCallbacks AutoStartPageCreate AutoStartPageLeave
+    PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave
   PageExEnd
+!macroend
+
+!macro customFinishPage
+  !ifndef HIDE_RUN_AFTER_FINISH
+    !define MUI_FINISHPAGE_RUN
+    !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
+  !endif
+  !define MUI_FINISHPAGE_SHOWREADME
+  !define MUI_FINISHPAGE_SHOWREADME_TEXT "开机自动启动 MyTodo"
+  !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+  !define MUI_FINISHPAGE_SHOWREADME_FUNCTION "EnableAutoStart"
+  !insertmacro MUI_PAGE_FINISH
 !macroend
 
 !macro customInstall
   ${IfNot} ${isUpdated}
-    ${If} $InstallerAutoStart == "1"
-      WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --hidden'
-    ${Else}
-      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}"
-    ${EndIf}
-
-    ClearErrors
-    FileOpen $0 "$INSTDIR\resources\mytodo-install-options.json" w
-    ${IfNot} ${Errors}
-      ${If} $InstallerAutoStart == "1"
-        FileWrite $0 '{"autoStart":true}'
-      ${Else}
-        FileWrite $0 '{"autoStart":false}'
-      ${EndIf}
-      FileClose $0
-    ${EndIf}
+    Call DisableAutoStart
   ${EndIf}
 !macroend
 !endif

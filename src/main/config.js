@@ -13,12 +13,14 @@ const defaultConfig = {
   weeklySummary: true,
   dailySummary: true,
   dailySummaryTime: "09:00",
-  quietHoursEnabled: true,
+  quietHoursEnabled: false,
   quietStart: "22:00",
   quietEnd: "08:00",
   lastDailySummaryDate: "",
   lastWeeklySummaryKey: "",
   trayNoticeShown: false,
+  closeToTrayPrompt: true,
+  closeWithoutPromptAction: "tray",
   floatBounds: null,
 };
 
@@ -66,12 +68,14 @@ function normalizeGlobalConfig(cfg) {
     weeklySummary: cfg.weeklySummary !== false,
     dailySummary: cfg.dailySummary !== false,
     dailySummaryTime: normalizeTime(cfg.dailySummaryTime, defaultConfig.dailySummaryTime),
-    quietHoursEnabled: cfg.quietHoursEnabled !== false,
+    quietHoursEnabled: cfg.quietHoursEnabled === true,
     quietStart: normalizeTime(cfg.quietStart, defaultConfig.quietStart),
     quietEnd: normalizeTime(cfg.quietEnd, defaultConfig.quietEnd),
     lastDailySummaryDate: String(cfg.lastDailySummaryDate || ""),
     lastWeeklySummaryKey: String(cfg.lastWeeklySummaryKey || ""),
     trayNoticeShown: !!cfg.trayNoticeShown,
+    closeToTrayPrompt: cfg.closeToTrayPrompt !== false,
+    closeWithoutPromptAction: cfg.closeWithoutPromptAction === "quit" ? "quit" : "tray",
     floatBounds: normalizeFloatBounds(cfg.floatBounds),
   };
 }

@@ -3,6 +3,14 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("electronAPI", {
   winMinimize: () => ipcRenderer.send("win-minimize"),
   winClose: () => ipcRenderer.send("win-close"),
+  resolveCloseConfirmation: (action, dontAskAgain) => ipcRenderer.invoke("resolve-close-confirmation", action, dontAskAgain === true),
+  cancelCloseConfirmation: () => ipcRenderer.invoke("cancel-close-confirmation"),
+  onCloseConfirmationRequested: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = () => callback();
+    ipcRenderer.on("close-confirmation-requested", listener);
+    return () => ipcRenderer.removeListener("close-confirmation-requested", listener);
+  },
   toggleMainWindowMaximize: () => ipcRenderer.invoke("win-toggle-maximize"),
   onReminderDisplay: (callback) => {
     if (typeof callback !== "function") return () => {};

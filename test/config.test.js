@@ -43,9 +43,11 @@ test("global reminder settings normalize and persist", (t) => {
   assert.equal(defaults.dailySummary, true);
   assert.equal(defaults.weeklySummary, true);
   assert.equal(defaults.notificationSound, true);
-  assert.equal(defaults.quietHoursEnabled, true);
+  assert.equal(defaults.quietHoursEnabled, false);
   assert.equal(defaults.dailySummaryTime, "09:00");
   assert.equal(defaults.trayNoticeShown, false);
+  assert.equal(defaults.closeToTrayPrompt, true);
+  assert.equal(defaults.closeWithoutPromptAction, "tray");
 
   const updated = loaded.config.setGlobalConfig({
     width: 400,
@@ -56,6 +58,8 @@ test("global reminder settings normalize and persist", (t) => {
     quietStart: "21:30",
     quietEnd: "07:45",
     trayNoticeShown: true,
+    closeToTrayPrompt: false,
+    closeWithoutPromptAction: "quit",
   });
   assert.equal(updated.width, 860);
   assert.equal(updated.height, 680);
@@ -81,4 +85,6 @@ test("global reminder settings normalize and persist", (t) => {
   assert.equal(persisted.lastWeeklySummaryKey, "2026-09-07");
   assert.equal(persisted.quietStart, "21:30");
   assert.equal(persisted.trayNoticeShown, true);
+  assert.equal(persisted.closeToTrayPrompt, false);
+  assert.equal(persisted.closeWithoutPromptAction, "quit");
 });

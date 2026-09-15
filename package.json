@@ -51,6 +51,10 @@
       {
         "from": "MyTodo.ico",
         "to": "MyTodo.ico"
+      },
+      {
+        "from": "MyTodo.ico",
+        "to": "MyTodoTaskbar.ico"
       }
     ],
     "electronDist": "node_modules/electron/dist",
@@ -61,7 +65,7 @@
     "nsis": {
       "oneClick": false,
       "include": "build/installer.nsh",
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "MyTodo",

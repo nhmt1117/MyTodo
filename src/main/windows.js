@@ -17,6 +17,9 @@ function getAppIconPath() {
 }
 
 const APP_ICON_PATH = getAppIconPath();
+const APP_TASKBAR_ICON_PATH = app.isPackaged && process.resourcesPath
+  ? path.join(process.resourcesPath, "MyTodoTaskbar.ico")
+  : APP_ICON_PATH;
 const APP_USER_MODEL_ID = "com.nhmt.mytodo";
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
 const REMINDER_WIN_SIZE = { width: 410, height: 276 };
@@ -31,6 +34,8 @@ let reminderWindow = null;
 let reminderWindowReady = false;
 let reminderWindowReadyPromise = null;
 let currentReminder = null;
+let closePromptPending = false;
+let quitFallbackTimer = null;
 const reminderQueue = [];
 
 function markQuitting() {
@@ -44,10 +49,52 @@ function destroyTray() {
   return true;
 }
 
+function applyTaskbarDetails(targetWindow) {
+  if (process.platform !== "win32") return;
+  targetWindow.setAppDetails({
+    appId: APP_USER_MODEL_ID,
+    appIconPath: APP_TASKBAR_ICON_PATH,
+    appIconIndex: 0,
+  });
+}
+
+function destroyManagedWindows() {
+  if (floatMoveSaveTimer) {
+    clearTimeout(floatMoveSaveTimer);
+    floatMoveSaveTimer = null;
+  }
+
+  const managedWindows = [reminderWindow, floatWindow, mainWindow];
+  for (const targetWindow of managedWindows) {
+    if (!targetWindow || targetWindow.isDestroyed()) continue;
+    try {
+      targetWindow.destroy();
+    } catch (error) {
+      console.warn("关闭应用窗口失败", error);
+    }
+  }
+
+  mainWindow = null;
+  floatWindow = null;
+  reminderWindow = null;
+  reminderWindowReady = false;
+  reminderWindowReadyPromise = null;
+  currentReminder = null;
+  reminderQueue.length = 0;
+}
+
 function quitApplication() {
+  if (isQuitting) return false;
   markQuitting();
   destroyTray();
+  destroyManagedWindows();
   app.quit();
+
+  // app.quit normally triggers Electron's full shutdown lifecycle. This only
+  // handles a renderer or native handle that refuses to release in time.
+  quitFallbackTimer = setTimeout(() => app.exit(0), 1500);
+  if (typeof quitFallbackTimer.unref === "function") quitFallbackTimer.unref();
+  return true;
 }
 
 function showMainWindow() {
@@ -80,21 +127,46 @@ function showTodoDetailInMainWindow(todoId) {
 function hideMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.hide();
+}
+
+function requestCloseMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (isQuitting) return quitApplication();
+  if (closePromptPending) return false;
 
   const config = getGlobalConfig();
-  if (config.trayNoticeShown) return;
-  try {
-    if (process.platform === "win32" && tray && typeof tray.displayBalloon === "function") {
-      tray.displayBalloon({
-        iconType: "info",
-        title: "MyTodo 仍在运行",
-        content: "关闭窗口后会继续在托盘检查提醒，可从托盘菜单完全退出。",
-      });
-    }
-    setGlobalConfig({ trayNoticeShown: true }, { applyAutoStart: false });
-  } catch (error) {
-    console.warn("无法记录托盘提示状态", error);
+  if (config.closeToTrayPrompt === false) {
+    if (config.closeWithoutPromptAction === "quit") return quitApplication();
+    hideMainWindow();
+    return false;
   }
+
+  closePromptPending = true;
+  mainWindow.webContents.send("close-confirmation-requested");
+  return false;
+}
+
+function resolveCloseMainWindow(action, dontAskAgain = false) {
+  if (!closePromptPending) return false;
+
+  closePromptPending = false;
+  const shouldQuit = action === "quit";
+  let updatedConfig = null;
+  if (dontAskAgain) {
+    updatedConfig = setGlobalConfig({
+      closeToTrayPrompt: false,
+      closeWithoutPromptAction: shouldQuit ? "quit" : "tray",
+    }, { applyAutoStart: false });
+  }
+  if (shouldQuit) quitApplication();
+  else hideMainWindow();
+  return { handled: true, config: updatedConfig };
+}
+
+function cancelCloseMainWindow() {
+  if (!closePromptPending) return false;
+  closePromptPending = false;
+  return true;
 }
 
 function notifyTodoDataChanged() {
@@ -510,13 +582,7 @@ function createMainWindow(options = {}) {
     },
   });
 
-  if (process.platform === "win32") {
-    mainWindow.setAppDetails({
-      appId: APP_USER_MODEL_ID,
-      appIconPath: APP_ICON_PATH,
-      appIconIndex: 0,
-    });
-  }
+  applyTaskbarDetails(mainWindow);
 
   mainWindow.loadFile(path.join(APP_ROOT, "index.html"));
   mainWindow.on("close", (event) => {
@@ -524,10 +590,12 @@ function createMainWindow(options = {}) {
     if (isQuitting) return;
 
     event.preventDefault();
-    hideMainWindow();
+    requestCloseMainWindow();
   });
   mainWindow.setIcon(APP_ICON_PATH);
   mainWindow.once("ready-to-show", () => {
+    mainWindow.setIcon(APP_ICON_PATH);
+    applyTaskbarDetails(mainWindow);
     if (showOnReady) mainWindow.show();
   });
 
@@ -535,10 +603,12 @@ function createMainWindow(options = {}) {
 }
 
 module.exports = {
+  cancelCloseMainWindow,
   closeFloatWindow,
   createFloatWindow,
   createMainWindow,
   createTray,
+  destroyManagedWindows,
   destroyTray,
   handleReminderAction,
   hideMainWindow,
@@ -549,6 +619,8 @@ module.exports = {
   notifyUpdateStatus,
   prepareReminderWindow,
   quitApplication,
+  requestCloseMainWindow,
+  resolveCloseMainWindow,
   saveFloatWindowBounds,
   showMainWindow,
   showReminder,

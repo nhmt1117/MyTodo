@@ -45,7 +45,11 @@ function registerIpcHandlers() {
   registered = true;
 
   ipcMain.on("win-minimize", windows.minimizeMainWindow);
-  ipcMain.on("win-close", windows.hideMainWindow);
+  ipcMain.on("win-close", windows.requestCloseMainWindow);
+  ipcMain.handle("resolve-close-confirmation", (_event, action, dontAskAgain) => {
+    return windows.resolveCloseMainWindow(action, dontAskAgain === true);
+  });
+  ipcMain.handle("cancel-close-confirmation", () => windows.cancelCloseMainWindow());
   ipcMain.handle("win-toggle-maximize", () => windows.toggleMainWindowMaximize());
   ipcMain.handle("reminder-action", (event, action, identity) => {
     const snoozeMinutes = Math.round(Number(identity?.minutes));
