@@ -3,40 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
   <title>MyTodo 提醒</title>
   <link rel="stylesheet" href="./renderer/reminder.css">
 </head>
 <body>
   <section id="reminderRoot" class="reminder-root" role="alertdialog" aria-live="assertive" aria-labelledby="taskTitle" aria-describedby="taskDescription">
     <header class="reminder-header">
-      <div class="brand">
-        <img src="./MyTodo.ico" alt="" aria-hidden="true">
-        <div class="brand-copy">
-          <strong>MyTodo</strong>
-        </div>
+      <div class="brand"><img src="./MyTodo.ico" alt="" aria-hidden="true"><strong>MyTodo</strong></div>
+      <div class="header-side">
+        <span id="reminderReason" class="reason-badge"></span>
+        <button type="button" id="dismissButton" class="icon-button" title="关闭提醒" aria-label="关闭提醒"><span class="close-icon" aria-hidden="true"></span></button>
       </div>
-      <button type="button" id="dismissButton" class="icon-button" title="关闭提醒" aria-label="关闭提醒">
-        <span class="close-icon" aria-hidden="true"></span>
-      </button>
     </header>
-
     <main class="reminder-content">
       <h1 id="taskTitle"></h1>
       <p id="taskDescription"></p>
-      <div class="deadline-row">
-        <span>截止时间</span>
-        <time id="deadlineTime"></time>
-      </div>
+      <div id="deadlineRow" class="deadline-row"><span>截止时间</span><time id="deadlineTime"></time></div>
     </main>
-
     <footer class="reminder-footer">
       <span id="queueStatus" class="queue-status" hidden></span>
       <div class="reminder-actions">
-        <button type="button" id="snoozeButton" class="action-button secondary">5 分钟后提醒</button>
-        <button type="button" id="acknowledgeButton" class="action-button primary">知道了</button>
+        <div id="snoozeControl" class="snooze-control">
+          <button type="button" id="snoozeButton" class="action-button secondary">15 分钟后</button>
+          <button type="button" id="snoozeMenuButton" class="snooze-menu-button" title="选择延后时间" aria-label="选择延后时间"><span></span></button>
+          <div id="snoozeMenu" class="snooze-menu" hidden>
+            <button type="button" data-minutes="15">15 分钟后</button>
+            <button type="button" data-minutes="60">1 小时后</button>
+            <button type="button" data-minutes="tomorrow">明早 09:00</button>
+          </div>
+        </div>
+        <button type="button" id="primaryActionButton" class="action-button primary">完成任务</button>
       </div>
     </footer>
   </section>
+  <audio id="notificationSound" src="./assets/soft-bell-ding.mp3" preload="auto"></audio>
   <script src="./renderer/reminder.js"></script>
 </body>
 </html>

@@ -45,6 +45,27 @@ test("data location uses Electron's default userData directory initially", (t) =
   });
 });
 
+test("user-data-dir ignores the global data location record", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-data-isolation-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const userDataDirectory = path.join(root, "isolated-user-data");
+  const appDataDirectory = path.join(root, "global-app-data");
+  const globalCustomDirectory = path.join(root, "global-custom-data");
+  fs.mkdirSync(appDataDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(appDataDirectory, "MyTodo-data-location.json"),
+    JSON.stringify({ directory: globalCustomDirectory }),
+    "utf8",
+  );
+  const originalArgv = process.argv;
+  process.argv = [...process.argv, `--user-data-dir=${userDataDirectory}`];
+  t.after(() => { process.argv = originalArgv; });
+
+  const dataLocation = loadDataLocation(userDataDirectory, appDataDirectory);
+  assert.equal(dataLocation.initializeDataDirectory().directory, path.resolve(userDataDirectory));
+  assert.equal(fs.existsSync(path.join(userDataDirectory, "MyTodo-data-location.json")), false);
+});
+
 test("data location migration moves tasks, settings and backups", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-data-migration-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -191,4 +212,22 @@ test("packaged builds retain legacy data when automatic migration fails", (t) =>
   assert.equal(fs.existsSync(path.join(legacyDirectory, "todo-store.json")), true);
   assert.equal(fs.existsSync(path.join(expectedDirectory, "todo-store.json")), false);
   assert.equal(fs.existsSync(path.join(appDataDirectory, "MyTodo-data-location.json")), false);
+});
+
+test("broken data location records report an explicit fallback", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-location-damaged-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const userDataDirectory = path.join(root, "user-data");
+  const appDataDirectory = path.join(root, "app-data");
+  fs.mkdirSync(appDataDirectory, { recursive: true });
+  fs.writeFileSync(path.join(appDataDirectory, "MyTodo-data-location.json"), "{broken", "utf8");
+  fs.writeFileSync(path.join(appDataDirectory, "MyTodo-data-location.json.bak"), "[]", "utf8");
+  t.mock.method(console, "error", () => {});
+
+  const dataLocation = loadDataLocation(userDataDirectory, appDataDirectory);
+  assert.equal(dataLocation.initializeDataDirectory().directory, path.resolve(userDataDirectory));
+  assert.deepEqual(dataLocation.getDataLocationStatus(), {
+    state: "error",
+    message: "数据位置记录无法读取，已临时使用默认位置",
+  });
 });

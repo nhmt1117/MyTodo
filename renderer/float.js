@@ -15,6 +15,8 @@ let words = [];
         idx++;
         showWord();
       }
+      document.querySelector("#nextWordButton").addEventListener("click", nextWord);
+
       const floatBody = document.querySelector(".body");
       let isDragging = false;
       let lastPoint = null;

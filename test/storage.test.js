@@ -39,6 +39,33 @@ test("reader recovers from backup when the primary is missing", (t) => {
   assert.equal(readJsonWithBackup(filePath, {}).source, "backup");
 });
 
+test("reader rejects an invalid structure and uses a valid backup", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-schema-recovery-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const filePath = path.join(tempDir, "todo-store.json");
+  fs.writeFileSync(filePath, JSON.stringify({ unexpected: true }), "utf8");
+  fs.writeFileSync(`${filePath}.bak`, JSON.stringify({ list: [{ id: 1 }] }), "utf8");
+
+  const result = readJsonWithBackup(filePath, { list: [] }, (value) => Array.isArray(value.list));
+  assert.equal(result.source, "backup");
+  assert.deepEqual(result.value, { list: [{ id: 1 }] });
+  assert.equal(result.primaryError.code, "EINVALIDDATA");
+});
+
+test("validated writes do not replace a healthy backup with an invalid primary", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-schema-write-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const filePath = path.join(tempDir, "todo-store.json");
+  const validBackup = { list: [{ id: 7 }] };
+  fs.writeFileSync(filePath, JSON.stringify({ unexpected: true }), "utf8");
+  fs.writeFileSync(`${filePath}.bak`, JSON.stringify(validBackup), "utf8");
+
+  const validate = (value) => Array.isArray(value.list);
+  writeJsonAtomic(filePath, { list: [{ id: 8 }] }, validate);
+  assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), { list: [{ id: 8 }] });
+  assert.deepEqual(JSON.parse(fs.readFileSync(`${filePath}.bak`, "utf8")), validBackup);
+});
+
 test("failed replacement preserves the primary and cleans up the temporary file", (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-write-failure-"));
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));

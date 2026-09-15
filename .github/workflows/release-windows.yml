@@ -1,0 +1,77 @@
+name: Publish Windows release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify tag and package version
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($version -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match package version $version"
+          }
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Build Windows installer
+        run: npm run build:win
+
+      - name: Verify release files
+        run: npm run verify:release
+
+      - name: Create or update release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "${{ github.ref_name }}"
+          $asset = "dist/MyTodo-Setup-$version.exe"
+          $notes = @"
+          ## MyTodo $version
+
+          ### 主要更新
+          - 主界面重构为待办、日历和设置三个工作区，统一任务编辑流程。
+          - 增加按优先级的提醒策略、每日摘要、每周概览、安静时段、逾期补发和秒级临近提醒。
+          - 日历支持当日任务详情、提醒铃铛、删除任务；首页支持未来 7 天按日期分组、搜索、排序、回到顶部和完成动画。
+          - 增加数据目录迁移、原子写入与备份恢复、Windows 安装器版本保护和自定义提醒窗口。
+
+          ### 安装与兼容
+          - 下载 `MyTodo-Setup-$version.exe` 后按向导安装即可。
+          - 现有本地任务与设置会保留；安装器会提示关闭正在运行的 MyTodo，并阻止降级安装。
+
+          ### 已知说明
+          - 本 Release 按发布策略只提供 Windows 安装包，不附带自动更新元数据；应用内自动更新将在后续附带 `latest.yml` 的版本恢复可用。
+          - 当前安装包尚未进行商业代码签名，Windows 可能显示未知发布者提示。
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP "mytodo-release-notes.md"
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
+          $releaseExists = gh release view $tag --json id --jq .id 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber
+            gh release edit $tag --title "MyTodo $version" --notes-file $notesPath
+          } else {
+            gh release create $tag $asset --verify-tag --title "MyTodo $version" --notes-file $notesPath
+          }

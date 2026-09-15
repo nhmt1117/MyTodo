@@ -89,3 +89,50 @@ test("legacy cycles receive a stable start date and reminder time", (t) => {
   assert.equal(store.loadTodoFile()[0].date, original.date);
   assert.equal(store.addTodoItem({ text: "Next" }).id, 8);
 });
+
+test("snooze supports a next-morning delay up to 48 hours", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-snooze-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  const item = store.addTodoItem({
+    text: "Tomorrow morning",
+    date: "2026-09-14",
+    dueTime: "09:00",
+    remind: true,
+    reminderMode: "custom",
+    customReminderOffsets: [0],
+  });
+  const key = "once:2026-09-14:09:00:0";
+  const snoozed = store.snoozeTodoReminder(
+    item.id,
+    key,
+    30 * 60,
+    new Date("2026-09-13T03:00:00.000Z"),
+  );
+  assert.equal(snoozed.snoozedUntil, "2026-09-14T09:00:00.000Z");
+  assert.equal(store.snoozeTodoReminder(item.id, key, 48 * 60 + 1), undefined);
+  const persisted = JSON.parse(fs.readFileSync(path.join(directory, "todo-store.json"), "utf8"));
+  assert.equal(persisted.schemaVersion, 2);
+});
+
+test("unreadable task data enters read-only protection without overwriting files", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-read-only-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const primaryPath = path.join(directory, "todo-store.json");
+  const backupPath = `${primaryPath}.bak`;
+  fs.writeFileSync(primaryPath, "{broken-primary", "utf8");
+  fs.writeFileSync(backupPath, "{broken-backup", "utf8");
+  t.mock.method(console, "error", () => {});
+
+  const store = loadStore(directory);
+  assert.deepEqual(store.loadTodoFile(), []);
+  assert.deepEqual(store.getTodoStorageStatus(), {
+    state: "error",
+    message: "任务文件及自动备份均无法读取，已进入只读保护",
+    readOnly: true,
+  });
+  assert.throws(() => store.addTodoItem({ text: "Must not overwrite" }), /只读保护状态/);
+  assert.equal(fs.readFileSync(primaryPath, "utf8"), "{broken-primary");
+  assert.equal(fs.readFileSync(backupPath, "utf8"), "{broken-backup");
+});

@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("reminder-display", listener);
   },
   reminderAction: (action, identity) => ipcRenderer.invoke("reminder-action", action, identity),
+  onTodoDataChanged: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = () => callback();
+    ipcRenderer.on("todo-data-changed", listener);
+    return () => ipcRenderer.removeListener("todo-data-changed", listener);
+  },
   onOpenTodoDetail: (callback) => {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, todoId) => callback(todoId);
@@ -18,6 +24,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("open-todo-detail", listener);
   },
   getAppInfo: () => ipcRenderer.invoke("get-app-info"),
+  getUpdateState: () => ipcRenderer.invoke("get-update-state"),
+  getReminderServiceStatus: () => ipcRenderer.invoke("get-reminder-service-status"),
+  triggerDevelopmentReminder: () => ipcRenderer.invoke("trigger-development-reminder"),
+  getStorageStatus: () => ipcRenderer.invoke("get-storage-status"),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  downloadUpdate: () => ipcRenderer.invoke("download-update"),
+  installUpdate: () => ipcRenderer.invoke("install-update"),
+  onUpdateStatus: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("update-status", listener);
+    return () => ipcRenderer.removeListener("update-status", listener);
+  },
   getTodoList: () => ipcRenderer.invoke("get-todo-list"),
   addTodoItem: (payload) => ipcRenderer.invoke("add-todo-item", payload),
   updateTodo: (payload) => ipcRenderer.invoke("update-todo", payload),
@@ -30,6 +49,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setGlobalConfig: (config) => ipcRenderer.invoke("set-global-config", config),
   getDataLocation: () => ipcRenderer.invoke("get-data-location"),
   chooseDataLocation: () => ipcRenderer.invoke("choose-data-location"),
+  openDataDirectory: () => ipcRenderer.invoke("open-data-directory"),
+  exportDataBackup: () => ipcRenderer.invoke("export-data-backup"),
+  openLogDirectory: () => ipcRenderer.invoke("open-log-directory"),
   toggleFloatWin: () => ipcRenderer.invoke("toggle-float-win"),
   moveFloatWin: (deltaX, deltaY) => ipcRenderer.invoke("move-float-win", deltaX, deltaY),
   saveFloatWinPosition: () => ipcRenderer.invoke("save-float-win-position"),

@@ -4,13 +4,15 @@ const {
   getGlobalConfig,
   normalizeFloatBounds,
   setFloatBounds,
+  setGlobalConfig,
   setMainWindowBounds,
 } = require("./config");
 
 const APP_ROOT = path.join(__dirname, "..", "..");
 const APP_ICON_PATH = path.join(APP_ROOT, "MyTodo.ico");
+const APP_USER_MODEL_ID = "com.nhmt.mytodo";
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
-const REMINDER_WIN_SIZE = { width: 388, height: 230 };
+const REMINDER_WIN_SIZE = { width: 410, height: 276 };
 const REMINDER_MARGIN = 18;
 
 let mainWindow = null;
@@ -56,7 +58,35 @@ function showTodoDetailInMainWindow(todoId) {
 }
 
 function hideMainWindow() {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.hide();
+
+  const config = getGlobalConfig();
+  if (config.trayNoticeShown) return;
+  try {
+    if (process.platform === "win32" && tray && typeof tray.displayBalloon === "function") {
+      tray.displayBalloon({
+        iconType: "info",
+        title: "MyTodo 仍在运行",
+        content: "关闭窗口后会继续在托盘检查提醒，可从托盘菜单完全退出。",
+      });
+    }
+    setGlobalConfig({ trayNoticeShown: true }, { applyAutoStart: false });
+  } catch (error) {
+    console.warn("无法记录托盘提示状态", error);
+  }
+}
+
+function notifyTodoDataChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.webContents.send("todo-data-changed");
+  return true;
+}
+
+function notifyUpdateStatus(status) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.webContents.send("update-status", status);
+  return true;
 }
 
 function minimizeMainWindow() {
@@ -84,17 +114,22 @@ function normalizeReminderPayload(candidate) {
   return {
     id,
     key,
+    kind: candidate.kind === "summary" ? "summary" : "task",
+    summaryKind: String(candidate.summaryKind || ""),
     title: String(candidate.title || "MyTodo 提醒"),
     body,
     description: String(candidate.description || ""),
     dueDate: String(candidate.dueDate || ""),
-    remindTime: String(candidate.remindTime || ""),
+    dueTime: String(candidate.dueTime || candidate.remindTime || ""),
+    remindTime: String(candidate.dueTime || candidate.remindTime || ""),
+    reason: String(candidate.reason || ""),
     priority: ["low", "mid", "high"].includes(candidate.priority)
       ? candidate.priority
       : "mid",
     isCycle: !!candidate.isCycle,
     cycleType: String(candidate.cycleType || ""),
     isSnoozed: !!candidate.isSnoozed,
+    developmentTest: !!candidate.developmentTest,
   };
 }
 
@@ -126,6 +161,7 @@ function sendCurrentReminder() {
   reminderWindow.webContents.send("reminder-display", {
     ...currentReminder,
     remainingCount: reminderQueue.length,
+    soundEnabled: getGlobalConfig().notificationSound !== false,
   });
   reminderWindow.showInactive();
   return true;
@@ -163,6 +199,7 @@ function createReminderWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      autoplayPolicy: "no-user-gesture-required",
       preload: path.join(APP_ROOT, "preload.js"),
     },
   });
@@ -229,7 +266,9 @@ function handleReminderAction(sender, action, identity = {}, handlers = {}) {
   const matchesCurrent =
     Number(identity.id) === currentReminder.id &&
     String(identity.key || "") === currentReminder.key;
-  if (!matchesCurrent || !["dismiss", "open", "snooze"].includes(action)) return false;
+  if (!matchesCurrent || !["dismiss", "open", "snooze", "complete"].includes(action)) {
+    return false;
+  }
 
   const handledReminder = { ...currentReminder };
   if (action === "snooze") {
@@ -237,10 +276,18 @@ function handleReminderAction(sender, action, identity = {}, handlers = {}) {
       return false;
     }
   }
+  if (action === "complete") {
+    if (typeof handlers.complete !== "function" || handlers.complete(handledReminder) !== true) {
+      return false;
+    }
+  }
 
   reminderWindow.hide();
   currentReminder = null;
-  if (action === "open") showTodoDetailInMainWindow(handledReminder.id);
+  if (action === "open") {
+    if (handledReminder.kind === "summary" || handledReminder.developmentTest) showMainWindow();
+    else showTodoDetailInMainWindow(handledReminder.id);
+  }
   showNextReminder();
   return true;
 }
@@ -420,20 +467,22 @@ function closeFloatWindow() {
   return true;
 }
 
-function createMainWindow() {
+function createMainWindow(options = {}) {
   const config = getGlobalConfig();
+  const showOnReady = options.showOnReady !== false;
 
   mainWindow = new BrowserWindow({
     title: "MyTodo",
     icon: APP_ICON_PATH,
     width: config.width,
     height: config.height,
-    minWidth: 540,
-    minHeight: 700,
+    minWidth: 860,
+    minHeight: 680,
     show: false,
     transparent: true,
     backgroundColor: "#00000000",
     frame: false,
+    hasShadow: true,
     resizable: true,
     webPreferences: {
       nodeIntegration: false,
@@ -443,17 +492,25 @@ function createMainWindow() {
     },
   });
 
+  if (process.platform === "win32") {
+    mainWindow.setAppDetails({
+      appId: APP_USER_MODEL_ID,
+      appIconPath: APP_ICON_PATH,
+      appIconIndex: 0,
+    });
+  }
+
   mainWindow.loadFile(path.join(APP_ROOT, "index.html"));
   mainWindow.on("close", (event) => {
     setMainWindowBounds(mainWindow.getBounds());
     if (isQuitting) return;
 
     event.preventDefault();
-    mainWindow.hide();
+    hideMainWindow();
   });
   mainWindow.setIcon(APP_ICON_PATH);
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    if (showOnReady) mainWindow.show();
   });
 
   return mainWindow;
@@ -469,6 +526,8 @@ module.exports = {
   markQuitting,
   minimizeMainWindow,
   moveFloatWindow,
+  notifyTodoDataChanged,
+  notifyUpdateStatus,
   prepareReminderWindow,
   saveFloatWindowBounds,
   showMainWindow,

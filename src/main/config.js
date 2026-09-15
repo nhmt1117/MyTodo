@@ -1,16 +1,33 @@
 const { app } = require("electron");
+const { normalizeTime } = require("../shared/recurrence");
 const { getDataFilePath } = require("./dataLocation");
 const { readJsonWithBackup, writeJsonAtomic } = require("./storage");
 
 const defaultConfig = {
-  width: 620,
-  height: 1000,
+  width: 1100,
+  height: 760,
   weekStartMon: true,
   autoStart: false,
+  autoCheckUpdates: true,
+  notificationSound: true,
+  weeklySummary: true,
+  dailySummary: true,
+  dailySummaryTime: "09:00",
+  quietHoursEnabled: true,
+  quietStart: "22:00",
+  quietEnd: "08:00",
+  lastDailySummaryDate: "",
+  lastWeeklySummaryKey: "",
+  trayNoticeShown: false,
   floatBounds: null,
 };
 
 let globalConfig = { ...defaultConfig };
+let configStatus = { state: "pending", message: "设置尚未加载" };
+
+function isConfigRecord(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
 
 function getConfigPath() {
   return getDataFilePath("win-config.json");
@@ -37,11 +54,24 @@ function normalizeFloatBounds(bounds) {
 }
 
 function normalizeGlobalConfig(cfg) {
+  const width = Number(cfg.width);
+  const height = Number(cfg.height);
   return {
-    width: Number.isFinite(Number(cfg.width)) ? Number(cfg.width) : defaultConfig.width,
-    height: Number.isFinite(Number(cfg.height)) ? Number(cfg.height) : defaultConfig.height,
+    width: Number.isFinite(width) ? Math.max(860, Math.round(width)) : defaultConfig.width,
+    height: Number.isFinite(height) ? Math.max(680, Math.round(height)) : defaultConfig.height,
     weekStartMon: cfg.weekStartMon !== false,
     autoStart: !!cfg.autoStart,
+    autoCheckUpdates: cfg.autoCheckUpdates !== false,
+    notificationSound: cfg.notificationSound !== false,
+    weeklySummary: cfg.weeklySummary !== false,
+    dailySummary: cfg.dailySummary !== false,
+    dailySummaryTime: normalizeTime(cfg.dailySummaryTime, defaultConfig.dailySummaryTime),
+    quietHoursEnabled: cfg.quietHoursEnabled !== false,
+    quietStart: normalizeTime(cfg.quietStart, defaultConfig.quietStart),
+    quietEnd: normalizeTime(cfg.quietEnd, defaultConfig.quietEnd),
+    lastDailySummaryDate: String(cfg.lastDailySummaryDate || ""),
+    lastWeeklySummaryKey: String(cfg.lastWeeklySummaryKey || ""),
+    trayNoticeShown: !!cfg.trayNoticeShown,
     floatBounds: normalizeFloatBounds(cfg.floatBounds),
   };
 }
@@ -62,26 +92,31 @@ function applyAutoStartSetting() {
     app.setLoginItemSettings({
       openAtLogin: globalConfig.autoStart,
       path: process.execPath,
+      args: ["--hidden"],
     });
   }
 }
 
 function loadGlobalConfig() {
-  const result = readJsonWithBackup(getConfigPath(), defaultConfig);
+  const result = readJsonWithBackup(getConfigPath(), defaultConfig, isConfigRecord);
   globalConfig = normalizeGlobalConfig({ ...defaultConfig, ...result.value });
 
   if (result.source === "backup") {
+    configStatus = { state: "recovered", message: "应用设置已从备份恢复" };
     console.warn("配置文件损坏，已从备份恢复", result.primaryError);
     saveGlobalConfig({ applyAutoStart: false });
   } else if (result.primaryError) {
+    configStatus = { state: "error", message: "应用设置无法读取，已恢复默认值" };
     console.error("配置文件及备份均无法读取，已使用默认配置", result.primaryError);
+  } else {
+    configStatus = { state: "ok", message: "应用设置正常" };
   }
 
   return cloneConfig();
 }
 
 function saveGlobalConfig(options = {}) {
-  writeJsonAtomic(getConfigPath(), globalConfig);
+  writeJsonAtomic(getConfigPath(), globalConfig, isConfigRecord);
   if (options.applyAutoStart !== false) applyAutoStartSetting();
 }
 
@@ -89,10 +124,25 @@ function getGlobalConfig() {
   return cloneConfig();
 }
 
+function getConfigStatus() {
+  return { ...configStatus };
+}
+
 function setGlobalConfig(cfg, options = {}) {
   globalConfig = normalizeGlobalConfig({ ...globalConfig, ...cfg });
   saveGlobalConfig(options);
+  configStatus = { state: "ok", message: "应用设置正常" };
   return cloneConfig();
+}
+
+function markSummarySent(kind, key) {
+  const summaryKey = String(key || "");
+  if (!summaryKey || !["daily", "weekly"].includes(kind)) return false;
+  const field = kind === "daily" ? "lastDailySummaryDate" : "lastWeeklySummaryKey";
+  if (globalConfig[field] === summaryKey) return false;
+  globalConfig[field] = summaryKey;
+  saveGlobalConfig({ applyAutoStart: false });
+  return true;
 }
 
 function setMainWindowBounds(bounds) {
@@ -101,7 +151,7 @@ function setMainWindowBounds(bounds) {
     width: bounds.width,
     height: bounds.height,
   });
-  saveGlobalConfig();
+  saveGlobalConfig({ applyAutoStart: false });
   return cloneConfig();
 }
 
@@ -116,8 +166,10 @@ function setFloatBounds(bounds) {
 
 module.exports = {
   applyAutoStartSetting,
+  getConfigStatus,
   getGlobalConfig,
   loadGlobalConfig,
+  markSummarySent,
   normalizeFloatBounds,
   setFloatBounds,
   setGlobalConfig,

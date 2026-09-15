@@ -1,7 +1,11 @@
 const { app, dialog, ipcMain } = require("electron");
 const { getGlobalConfig, setGlobalConfig } = require("./config");
 const { getDataLocation, migrateDataDirectory } = require("./dataLocation");
+const { getReminderServiceStatus } = require("./reminderScheduler");
+const { formatLocalDate } = require("../shared/recurrence");
+const supportTools = require("./supportTools");
 const todoStore = require("./todoStore");
+const updateManager = require("./updateManager");
 const windows = require("./windows");
 
 let registered = false;
@@ -44,9 +48,19 @@ function registerIpcHandlers() {
   ipcMain.on("win-close", windows.hideMainWindow);
   ipcMain.handle("win-toggle-maximize", () => windows.toggleMainWindowMaximize());
   ipcMain.handle("reminder-action", (event, action, identity) => {
+    const snoozeMinutes = Math.round(Number(identity?.minutes));
     return windows.handleReminderAction(event.sender, action, identity, {
       snooze: (reminder) => {
-        return !!todoStore.snoozeTodoReminder(reminder.id, reminder.key, 5);
+        if (reminder.developmentTest) return true;
+        return reminder.kind === "task" &&
+          !!todoStore.snoozeTodoReminder(reminder.id, reminder.key, snoozeMinutes);
+      },
+      complete: (reminder) => {
+        if (reminder.developmentTest) return true;
+        if (reminder.kind !== "task") return false;
+        const updated = todoStore.setArchived(reminder.id, true);
+        if (updated) windows.notifyTodoDataChanged();
+        return !!updated;
       },
     });
   });
@@ -67,9 +81,42 @@ function registerIpcHandlers() {
   ipcMain.handle("get-float-config", async () => ({
     config: getGlobalConfig(),
   }));
-  ipcMain.handle("set-global-config", async (evt, cfg) => setGlobalConfig(cfg));
+  ipcMain.handle("set-global-config", async (evt, cfg) => {
+    const config = setGlobalConfig(cfg);
+    if (cfg && Object.prototype.hasOwnProperty.call(cfg, "autoCheckUpdates")) {
+      updateManager.setAutoCheckEnabled(config.autoCheckUpdates);
+    }
+    return config;
+  });
+  ipcMain.handle("get-update-state", async () => updateManager.getUpdateState());
+  ipcMain.handle("get-reminder-service-status", async () => getReminderServiceStatus());
+  ipcMain.handle("trigger-development-reminder", async () => {
+    if (app.isPackaged) return false;
+    const now = new Date();
+    const dueTime = String(now.getHours()).padStart(2, "0") + ":" +
+      String(now.getMinutes()).padStart(2, "0");
+    return windows.showReminder({
+      id: -1,
+      key: `development:${now.toISOString()}`,
+      kind: "task",
+      body: "开发版测试提醒",
+      description: "用于检查提醒窗口、提示音、倒计时和按钮交互",
+      dueDate: formatLocalDate(now),
+      dueTime,
+      reason: "开发测试",
+      priority: "mid",
+      developmentTest: true,
+    });
+  });
+  ipcMain.handle("get-storage-status", async () => supportTools.getStorageStatus());
+  ipcMain.handle("check-for-updates", async () => updateManager.checkForUpdates({ manual: true }));
+  ipcMain.handle("download-update", async () => updateManager.downloadUpdate());
+  ipcMain.handle("install-update", async () => updateManager.installUpdate());
   ipcMain.handle("get-data-location", async () => getDataLocation());
   ipcMain.handle("choose-data-location", chooseAndMigrateDataDirectory);
+  ipcMain.handle("open-data-directory", supportTools.openDataDirectory);
+  ipcMain.handle("export-data-backup", supportTools.exportDataBackup);
+  ipcMain.handle("open-log-directory", supportTools.openLogDirectory);
   ipcMain.handle("toggle-float-win", async () => windows.toggleFloatWindow());
   ipcMain.handle("move-float-win", async (evt, deltaX, deltaY) => {
     return windows.moveFloatWindow(deltaX, deltaY);

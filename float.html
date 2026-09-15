@@ -2,6 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
     <title>单词悬浮窗</title>
     <link rel="stylesheet" href="./renderer/float.css">
   </head>
@@ -14,7 +15,7 @@
       <p class="exp" id="e"></p>
 
       <div class="no-drag no-close-dblclick">
-        <button onclick="nextWord()">下一个</button>
+        <button type="button" id="nextWordButton">下一个</button>
       </div>
     </div>
 

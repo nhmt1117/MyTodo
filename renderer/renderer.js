@@ -1,742 +1,1246 @@
-let appConfig = {}
-let currentDate = new Date()
-let sortType = "date-asc"
-let selectedCalendarDate = getTodayStr()
-let calendarFirstLoad = true // 仅应用启动后首次进入日历时默认显示当天
-let calendarTodoCache = null
-let calendarDirty = true
-const $ = s=>document.querySelector(s)
-const $$ = s=>Array.from(document.querySelectorAll(s))
-const recurrence = window.todoRecurrence
-const cycleTypeLabels = {daily:"每日",weekly:"每周",monthly:"每月"}
-function escapeHtml(value){
-  const map = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}
-  return String(value ?? "").replace(/[&<>"']/g, ch=>map[ch])
+const recurrence = window.todoRecurrence;
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+let appConfig = {};
+let todoList = [];
+let activePage = "home";
+let activeFilter = "today";
+let sortType = "date-asc";
+let searchText = "";
+let currentDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let selectedCalendarDate = recurrence.formatLocalDate(new Date());
+let selectedPriority = "mid";
+let selectedTaskType = "normal";
+let selectedReminderMode = "auto";
+let detailItem = null;
+let deleteTargetId = null;
+let refreshPending = false;
+let updateState = null;
+let lastUpdatePhase = "";
+let backTopTarget = null;
+
+const priorityNames = { high: "高", mid: "中", low: "低" };
+const priorityOrder = { high: 0, mid: 1, low: 2 };
+const reminderModeNames = {
+  auto: "自动推荐",
+  gentle: "轻提醒",
+  standard: "标准提醒",
+  strong: "强提醒",
+  custom: "自定义",
+};
+const cycleNames = { daily: "每日", weekly: "每周", monthly: "每月" };
+
+function reminderBellHtml(extraClass = "") {
+  const className = ["reminder-icon", extraClass].filter(Boolean).join(" ");
+  return '<svg class="' + className + '" viewBox="0 0 24 24" role="img" aria-label="已开启提醒"><title>已开启提醒</title><path d="M10.27 21a2 2 0 0 0 3.46 0"/><path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33Z"/></svg>';
 }
-function safeDataId(value){
-  const id = Number(value)
-  return Number.isFinite(id) ? String(id) : ""
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
-function clearTitleError(inputId){
-  const input = $("#"+inputId)
-  const error = $("#"+inputId+"Error")
-  input.classList.remove("field-invalid")
-  input.removeAttribute("aria-invalid")
-  error.textContent = ""
-  error.classList.add("hidden")
+
+function pad(value) {
+  return String(value).padStart(2, "0");
 }
-function showTitleError(inputId){
-  const input = $("#"+inputId)
-  const error = $("#"+inputId+"Error")
-  input.classList.add("field-invalid")
-  input.setAttribute("aria-invalid", "true")
-  error.textContent = "请填写任务标题"
-  error.classList.remove("hidden")
-  requestAnimationFrame(()=>{
-    input.focus({preventScroll:true})
-    input.setSelectionRange(input.value.length,input.value.length)
-  })
+
+function todayString() {
+  return recurrence.formatLocalDate(new Date());
 }
-;["eTitle","nTitle","cTitle"].forEach(inputId=>{
-  $("#"+inputId).addEventListener("input",()=>clearTitleError(inputId))
-})
-function setMainWindowMaximized(isMaximized){
-  const button = $("#maximizeRestoreButton")
-  if(!button) return
-  const label = isMaximized ? "还原窗口" : "最大化窗口"
-  document.body.classList.toggle("window-maximized", isMaximized)
-  button.classList.toggle("is-maximized", isMaximized)
-  button.title = label
-  button.setAttribute("aria-label", label)
+
+function addDays(dateValue, amount) {
+  const date = typeof dateValue === "string"
+    ? recurrence.parseLocalDate(dateValue)
+    : new Date(dateValue);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + Number(amount || 0));
+  return date;
 }
-async function toggleMainWindowMaximize(){
-  const isMaximized = await window.electronAPI.toggleMainWindowMaximize()
-  setMainWindowMaximized(isMaximized)
+
+function formatChineseDate(dateValue, includeWeekday) {
+  const date = typeof dateValue === "string"
+    ? recurrence.parseLocalDate(dateValue)
+    : new Date(dateValue);
+  if (!date || Number.isNaN(date.getTime())) return "未设置";
+  const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const base = (date.getMonth() + 1) + "月" + date.getDate() + "日";
+  return includeWeekday ? base + " " + weekdays[date.getDay()] : base;
 }
-$(".title-bar").ondblclick = event=>{
-  if(event.target.closest(".title-ctrl")) return
-  toggleMainWindowMaximize()
+
+function formatHomeGroupDate(dateValue) {
+  const date = recurrence.parseLocalDate(dateValue);
+  if (!date) return "未设置日期";
+  const weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
+  const today = todayString();
+  const tomorrow = recurrence.formatLocalDate(addDays(today, 1));
+  if (dateValue === today) return "今天 " + weekday;
+  if (dateValue === tomorrow) return "明天 " + weekday;
+  return formatChineseDate(date, false) + " " + weekday;
 }
-const navItems = $$('.nav-item')
-const pages = $$('.page')
-navItems.forEach(item=>{
-  item.onclick = async ()=>{
-    const targetPage = item.dataset.page
-    navItems.forEach(n=>n.classList.remove('active'))
-    pages.forEach(p=>p.classList.remove('active'))
-    item.classList.add('active')
-    $(`#${targetPage}`).classList.add('active')
-    if(targetPage === "calendar") {
-      if(calendarFirstLoad){
-        currentDate = new Date()
-        selectedCalendarDate = getTodayStr()
-        calendarFirstLoad = false
-      }
-      if(calendarDirty || !calendarTodoCache){
-        await refreshCalendar({rebuild:true,showLoading:true})
-      }
+
+function formatShortDateTime(date) {
+  const value = new Date(date);
+  if (Number.isNaN(value.getTime())) return "";
+  return pad(value.getMonth() + 1) + "/" + pad(value.getDate()) + " " +
+    pad(value.getHours()) + ":" + pad(value.getMinutes());
+}
+
+function getOccurrenceDateValue(item, from) {
+  if (!item) return "";
+  if (!item.isCycle) return item.date || "";
+  const occurrence = recurrence.getNextOccurrenceDate(item, from || new Date());
+  return occurrence ? recurrence.formatLocalDate(occurrence) : "";
+}
+
+function getDueAt(item, dateValue) {
+  const date = dateValue || getOccurrenceDateValue(item);
+  return recurrence.createLocalDateTime(date, item.dueTime || item.remindTime || "09:00");
+}
+
+function classifyTask(item, now) {
+  const reference = now || new Date();
+  if (item.archived) return { type: "archived", date: item.date || "", dueAt: getDueAt(item, item.date) };
+  const dateValue = getOccurrenceDateValue(item, reference);
+  const dueAt = getDueAt(item, dateValue);
+  const today = recurrence.formatLocalDate(reference);
+  const weekEnd = recurrence.formatLocalDate(addDays(today, 7));
+  let overdue = false;
+  if (dueAt && dueAt < reference) overdue = !item.isCycle || dateValue === today;
+  return {
+    type: overdue ? "overdue" : dateValue === today ? "today" :
+      dateValue > today && dateValue <= weekEnd ? "week" : "later",
+    date: dateValue,
+    dueAt,
+  };
+}
+
+function itemMatchesSearch(item) {
+  if (!searchText) return true;
+  const haystack = (String(item.text || "") + "\n" + String(item.desc || "")).toLowerCase();
+  return haystack.includes(searchText.toLowerCase());
+}
+
+function sortTasks(items) {
+  return [...items].sort((left, right) => {
+    const leftInfo = classifyTask(left);
+    const rightInfo = classifyTask(right);
+    if (sortType === "prio-high") {
+      const priorityDifference = priorityOrder[left.priority] - priorityOrder[right.priority];
+      if (priorityDifference) return priorityDifference;
     }
+    const leftTime = leftInfo.dueAt ? leftInfo.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
+    const rightTime = rightInfo.dueAt ? rightInfo.dueAt.getTime() : Number.MAX_SAFE_INTEGER;
+    if (sortType === "date-desc") return rightTime - leftTime || right.id - left.id;
+    return leftTime - rightTime || priorityOrder[left.priority] - priorityOrder[right.priority] || left.id - right.id;
+  });
+}
+
+function formatTaskTime(item, info) {
+  const dateValue = info.date;
+  const time = item.dueTime || item.remindTime || "09:00";
+  if (!dateValue) return "未设置日期";
+  const today = todayString();
+  const tomorrow = recurrence.formatLocalDate(addDays(today, 1));
+  let label = formatChineseDate(dateValue, false);
+  if (dateValue === today) label = "今天";
+  if (dateValue === tomorrow) label = "明天";
+  if (item.isCycle) label += " · " + (cycleNames[item.cycleType] || "循环");
+  return label + " " + time;
+}
+
+function getReminderScheduleForItem(item, from) {
+  if (!item || !item.remind || item.muteRemind) return [];
+  const dateValue = getOccurrenceDateValue(item, from);
+  return dateValue ? recurrence.getReminderSchedule(item, dateValue) : [];
+}
+
+function getReminderSummary(item) {
+  if (!item.remind) return "不提醒";
+  if (item.muteRemind) return "已关闭该任务提醒";
+  const schedule = getReminderScheduleForItem(item);
+  if (!schedule.length) return "未生成提醒节点";
+  const mode = item.reminderMode || "auto";
+  const effectiveMode = recurrence.getEffectiveReminderMode(item);
+  const modeText = mode === "auto"
+    ? "自动推荐（" + reminderModeNames[effectiveMode] + "）"
+    : reminderModeNames[mode];
+  return modeText + "：" + schedule.map((entry) => entry.reason).join("、");
+}
+
+function setPage(pageName) {
+  activePage = pageName;
+  $$(".page").forEach((page) => page.classList.toggle("active", page.id === pageName));
+  $$(".nav-item[data-page]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.page === pageName);
+  });
+  closeDropMenu();
+  if (pageName === "home") renderHome();
+  if (pageName === "calendar") renderCalendar();
+  const scrollTarget = document.querySelector("#" + pageName + " .page-scroll, #" + pageName + " .agenda-list");
+  setBackTopTarget(scrollTarget);
+}
+
+function updateSummary() {
+  const active = todoList.filter((item) => !item.archived);
+  const infos = active.map((item) => ({ item, info: classifyTask(item) }));
+  $("#overdueCount").textContent = String(infos.filter((entry) => entry.info.type === "overdue").length);
+  $("#todayCount").textContent = String(infos.filter((entry) => entry.info.date === todayString()).length);
+  $("#weekCount").textContent = String(infos.filter((entry) => entry.info.type === "week").length);
+}
+
+function getHomeGroups() {
+  const matching = todoList.filter(itemMatchesSearch);
+  const active = matching.filter((item) => !item.archived);
+  const archived = matching.filter((item) => item.archived);
+  if (activeFilter === "archived") return [{ title: "已归档", items: sortTasks(archived) }];
+  if (activeFilter === "all") return [{ title: "全部未完成", items: sortTasks(active) }];
+
+  const withInfo = active.map((item) => ({ item, info: classifyTask(item) }));
+  const overdueGroup = {
+    title: "已逾期",
+    items: sortTasks(withInfo.filter((entry) => entry.info.type === "overdue").map((entry) => entry.item)),
+  };
+  if (activeFilter === "week") {
+    const tasksByDate = new Map();
+    withInfo
+      .filter((entry) => entry.info.type === "today" || entry.info.type === "week")
+      .forEach((entry) => {
+        const dateItems = tasksByDate.get(entry.info.date) || [];
+        dateItems.push(entry.item);
+        tasksByDate.set(entry.info.date, dateItems);
+      });
+    const dateGroups = [...tasksByDate.entries()]
+      .sort(([left], [right]) => {
+        return sortType === "date-desc" ? right.localeCompare(left) : left.localeCompare(right);
+      })
+      .map(([date, items]) => ({ title: formatHomeGroupDate(date), items: sortTasks(items) }));
+    return [overdueGroup, ...dateGroups];
   }
-})
-$("#sortSelector").onchange = e=>{
-  sortType = e.target.value
-  refreshHome()
+  return [
+    overdueGroup,
+    { title: "今天", items: sortTasks(withInfo.filter((entry) => entry.info.type === "today").map((entry) => entry.item)) },
+  ];
 }
-function getTodayStr(){
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+
+function taskRowHtml(item) {
+  const info = classifyTask(item);
+  const description = String(item.desc || "").trim();
+  return '<article class="task-row ' + (item.archived ? "archived" : "") + '" data-id="' + item.id + '">' +
+    '<button type="button" class="task-check" data-action="toggle" title="' +
+      (item.archived ? "恢复任务" : "完成任务") + '" aria-label="' +
+      (item.archived ? "恢复任务" : "完成任务") + '"></button>' +
+    '<div class="task-main">' +
+      '<div class="task-title-line"><span class="task-title">' + escapeHtml(item.text) + '</span>' +
+      (item.isCycle ? '<span class="type-badge">循环</span>' : "") +
+      (item.remind && !item.muteRemind ? reminderBellHtml() : "") +
+      '</div>' +
+      '<div class="task-description">' + escapeHtml(description || "无备注") + '</div>' +
+    '</div>' +
+    '<div class="task-meta">' +
+      '<span class="meta-time ' + (info.type === "overdue" ? "is-overdue" : "") + '">' + escapeHtml(formatTaskTime(item, info)) + '</span>' +
+      '<span class="priority-badge ' + item.priority + '">' + priorityNames[item.priority] + '</span>' +
+    '</div>' +
+    '<button type="button" class="more-button" data-action="menu" title="更多操作" aria-label="更多操作"></button>' +
+  '</article>';
 }
-let editTargetItem = null
-let deleteTargetId = null
-function showEditModal(item){
-  clearTitleError("eTitle")
-  editTargetItem = {...item}
-  $("#editId").value = item.id
-  $("#eTitle").value = item.text
-  $("#eDesc").value = item.desc || ''
-  $("#eDate").value = item.date || ""
-  $("#ePrio").value = item.priority
-  $("#eRemind").checked = !!item.remind
-  $("#eRemindTime").value = item.remindTime || "09:00"
-  $("#eCycleType").value = item.cycleType || "daily"
-  $("#eDateLabel").innerText = item.isCycle ? "开始日期" : "截止日期"
-  $("#eCycleTypeRow").classList.toggle("hidden", !item.isCycle)
-  syncReminderTime("eRemind", "eRemindTime")
-  updateReminderRule("edit")
-  $("#editModal").classList.remove("hidden")
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
-function hideEditModal(){$("#editModal").classList.add("hidden")}
-async function submitEdit(){
+
+async function completeTaskWithAnimation(row, item) {
+  if (row.classList.contains("is-completing")) return;
+  const button = row.querySelector('[data-action="toggle"]');
+  button.disabled = true;
+  row.classList.add("is-completing");
+
+  try {
+    const [updated] = await Promise.all([
+      window.electronAPI.archiveTodo(item.id),
+      wait(360),
+    ]);
+    if (!updated) throw new Error("任务不存在或已被删除");
+    row.classList.add("is-leaving");
+    await wait(280);
+    await refreshTodoData();
+  } catch (error) {
+    row.classList.remove("is-completing", "is-leaving");
+    button.disabled = false;
+    showToast("操作失败：" + (error.message || "请稍后重试"));
+  }
+}
+
+function bindTaskRows(container) {
+  container.querySelectorAll(".task-row").forEach((row) => {
+    const item = todoList.find((entry) => entry.id === Number(row.dataset.id));
+    if (!item) return;
+    row.addEventListener("click", () => showDetailModal(item));
+    row.querySelector('[data-action="toggle"]').addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (item.archived) await toggleArchived(item);
+      else await completeTaskWithAnimation(row, item);
+    });
+    row.querySelector('[data-action="menu"]').addEventListener("click", (event) => {
+      event.stopPropagation();
+      showTaskMenu(event.currentTarget, item);
+    });
+  });
+}
+
+function renderHome() {
+  updateSummary();
+  const heading = $("#home .page-heading h1");
+  const titles = { today: "今天", week: "未来 7 天", all: "全部待办", archived: "已归档" };
+  heading.textContent = titles[activeFilter];
+  $("#homeSubtitle").textContent = formatChineseDate(new Date(), true) + " · " +
+    todoList.filter((item) => !item.archived).length + " 项未完成";
+  $$("#taskFilters .filter-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.filter === activeFilter);
+  });
+  const groups = getHomeGroups().filter((group) => group.items.length);
+  const container = $("#taskGroups");
+  container.innerHTML = groups.map((group) => {
+    return '<section class="task-group"><header class="task-group-head"><h2>' +
+      escapeHtml(group.title) + '</h2><span class="task-group-count">' +
+      group.items.length + ' 项</span></header><div class="task-list">' +
+      group.items.map(taskRowHtml).join("") + '</div></section>';
+  }).join("");
+  $("#homeEmpty").classList.toggle("hidden", groups.length > 0);
+  bindTaskRows(container);
+}
+
+function tasksOnDate(dateValue) {
+  return todoList.filter((item) => {
+    if (item.archived) return false;
+    if (item.isCycle) return recurrence.occursOnDate(item, dateValue);
+    return item.date === dateValue;
+  }).sort((left, right) => {
+    const timeDifference = String(left.dueTime || "").localeCompare(String(right.dueTime || ""));
+    return timeDifference || priorityOrder[left.priority] - priorityOrder[right.priority];
+  });
+}
+
+function renderAgenda() {
+  const selectedDate = recurrence.parseLocalDate(selectedCalendarDate);
+  const items = tasksOnDate(selectedCalendarDate);
+  $("#agendaTitle").textContent = formatChineseDate(selectedDate, true);
+  $("#agendaCount").textContent = items.length ? items.length + " 项任务" : "没有安排";
+  const list = $("#dayTaskList");
+  if (!items.length) {
+    list.innerHTML = '<div class="agenda-empty">这一天还没有任务</div>';
+    return;
+  }
+  list.innerHTML = items.map((item) => {
+    const reminderBell = item.remind && !item.muteRemind ? reminderBellHtml("agenda-reminder-icon") : "";
+    return '<button type="button" class="agenda-item ' + item.priority + '" data-id="' + item.id + '">' +
+      '<span class="agenda-title-line"><strong>' + escapeHtml(item.text) +
+      '</strong><span class="agenda-reminder-slot">' + reminderBell + '</span></span><span class="agenda-meta">' +
+      escapeHtml((item.dueTime || item.remindTime || "09:00") +
+        (item.isCycle ? " · " + (cycleNames[item.cycleType] || "循环") : "")) +
+      '</span></button>';
+  }).join("");
+  list.querySelectorAll(".agenda-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = todoList.find((entry) => entry.id === Number(button.dataset.id));
+      if (item) showDetailModal(item);
+    });
+  });
+}
+
+function renderCalendar() {
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  $("#monthTitle").textContent = year + " 年 " + (month + 1) + " 月";
+  $("#calendarSubtitle").textContent = todoList.filter((item) => !item.archived).length + " 项任务的时间分布";
+  const weekDays = appConfig.weekStartMon
+    ? ["一", "二", "三", "四", "五", "六", "日"]
+    : ["日", "一", "二", "三", "四", "五", "六"];
+  $("#weekRow").innerHTML = weekDays.map((day) => "<span>周" + day + "</span>").join("");
+
+  const first = new Date(year, month, 1);
+  const weekStart = appConfig.weekStartMon ? 1 : 0;
+  const offset = (first.getDay() - weekStart + 7) % 7;
+  const gridStart = new Date(year, month, 1 - offset);
+  const cells = [];
+  for (let index = 0; index < 42; index += 1) {
+    const date = addDays(gridStart, index);
+    const dateValue = recurrence.formatLocalDate(date);
+    const items = tasksOnDate(dateValue);
+    const visible = items.slice(0, 2);
+    const classes = [
+      "calendar-day",
+      date.getMonth() === month ? "" : "outside",
+      dateValue === selectedCalendarDate ? "selected" : "",
+      dateValue === todayString() ? "today" : "",
+    ].filter(Boolean).join(" ");
+    cells.push('<button type="button" class="' + classes + '" data-date="' + dateValue + '">' +
+      '<span class="day-number">' + date.getDate() + '</span><span class="day-items">' +
+      visible.map((item) => '<span class="calendar-task ' + item.priority + '">' +
+        escapeHtml(item.text) + '</span>').join("") +
+      (items.length > visible.length ? '<span class="calendar-more">+' + (items.length - visible.length) + ' 项</span>' : "") +
+      '</span></button>');
+  }
+  $("#calendarBody").innerHTML = cells.join("");
+  $("#calendarBody").querySelectorAll(".calendar-day").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedCalendarDate = button.dataset.date;
+      const selected = recurrence.parseLocalDate(selectedCalendarDate);
+      if (selected.getMonth() !== currentDate.getMonth() || selected.getFullYear() !== currentDate.getFullYear()) {
+        currentDate = new Date(selected.getFullYear(), selected.getMonth(), 1);
+      }
+      renderCalendar();
+    });
+  });
+  renderAgenda();
+}
+
+function closeDropMenu() {
+  $("#globalDropMask").classList.add("hidden");
+  $("#globalDrop").classList.add("hidden");
+  $("#globalDrop").innerHTML = "";
+}
+
+function showTaskMenu(anchor, item) {
+  const actions = item.archived
+    ? [
+        { label: "恢复任务", run: () => toggleArchived(item) },
+        { label: "删除任务", danger: true, run: () => askDelete(item.id) },
+      ]
+    : [
+        { label: "编辑任务", run: () => openTaskModal(item) },
+        { label: item.isCycle ? "停止循环" : "完成任务", run: () => toggleArchived(item) },
+        ...(item.remind && !item.muteRemind
+          ? [{ label: "关闭该任务提醒", run: () => muteReminder(item) }]
+          : []),
+        { label: "删除任务", danger: true, run: () => askDelete(item.id) },
+      ];
+  const menu = $("#globalDrop");
+  menu.innerHTML = actions.map((action, index) => {
+    return '<button type="button" class="drop-item ' + (action.danger ? "danger" : "") +
+      '" data-index="' + index + '">' + escapeHtml(action.label) + '</button>';
+  }).join("");
+  menu.classList.remove("hidden");
+  $("#globalDropMask").classList.remove("hidden");
+  const rect = anchor.getBoundingClientRect();
+  const left = Math.max(14, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 14));
+  let top = rect.bottom + 5;
+  if (top + menu.offsetHeight > window.innerHeight - 14) top = rect.top - menu.offsetHeight - 5;
+  menu.style.left = left + "px";
+  menu.style.top = Math.max(14, top) + "px";
+  menu.querySelectorAll(".drop-item").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const action = actions[Number(button.dataset.index)];
+      closeDropMenu();
+      if (action) await action.run();
+    });
+  });
+}
+
+async function toggleArchived(item) {
+  try {
+    if (item.archived) await window.electronAPI.unarchiveTodo(item.id);
+    else await window.electronAPI.archiveTodo(item.id);
+    await refreshTodoData();
+  } catch (error) {
+    showToast("操作失败：" + (error.message || "请稍后重试"));
+  }
+}
+
+async function muteReminder(item) {
+  try {
+    await window.electronAPI.muteTodoRemind(item.id);
+    await refreshTodoData();
+    showToast("已关闭该任务提醒");
+  } catch (error) {
+    showToast("操作失败：" + (error.message || "请稍后重试"));
+  }
+}
+
+function setSegmentValue(containerSelector, value) {
+  $$(containerSelector + " .segment").forEach((button) => {
+    button.classList.toggle("active", button.dataset.value === value);
+  });
+}
+
+function getCustomOffsets() {
+  return $$("#customOffsets input:checked").map((input) => Number(input.value));
+}
+
+function setCustomOffsets(offsets) {
+  const selected = new Set(Array.isArray(offsets) ? offsets.map(Number) : []);
+  $$("#customOffsets input").forEach((input) => {
+    input.checked = selected.has(Number(input.value));
+  });
+}
+
+function updateTaskTypeUi() {
+  const isCycle = selectedTaskType === "cycle";
+  $("#cycleTypeRow").classList.toggle("hidden", !isCycle);
+  $("#taskDateLabel").textContent = isCycle ? "首次日期" : "截止日期";
+  updateReminderPreview();
+}
+
+function updateReminderPreview() {
+  const enabled = $("#taskReminderEnabled").checked;
+  $("#taskReminderConfig").classList.toggle("hidden", !enabled);
+  if (!enabled) return;
+  const effectiveMode = recurrence.getEffectiveReminderMode({
+    priority: selectedPriority,
+    reminderMode: selectedReminderMode,
+  });
+  const priorityLabel = priorityNames[selectedPriority];
+  $("#reminderDefaultText").textContent = selectedReminderMode === "auto"
+    ? priorityLabel + "优先级默认使用" + reminderModeNames[effectiveMode]
+    : "当前使用" + reminderModeNames[selectedReminderMode];
+  $("#customOffsets").classList.toggle("hidden", selectedReminderMode !== "custom");
+
+  const dateValue = $("#taskDate").value;
+  const draft = {
+    date: dateValue,
+    dueTime: $("#taskDueTime").value || "09:00",
+    remindTime: $("#taskDueTime").value || "09:00",
+    priority: selectedPriority,
+    reminderMode: selectedReminderMode,
+    customReminderOffsets: getCustomOffsets(),
+    isCycle: selectedTaskType === "cycle",
+    cycleType: $("#taskCycleType").value,
+  };
+  let occurrenceDate = dateValue;
+  if (draft.isCycle && dateValue) {
+    const next = recurrence.getNextOccurrenceDate(draft, new Date());
+    occurrenceDate = next ? recurrence.formatLocalDate(next) : dateValue;
+  }
+  const schedule = occurrenceDate ? recurrence.getReminderSchedule(draft, occurrenceDate) : [];
+  const effectiveLabel = reminderModeNames[recurrence.getEffectiveReminderMode(draft)];
+  let recommendation = selectedReminderMode === "auto"
+    ? "按优先级自动采用" + effectiveLabel
+    : "已选择" + reminderModeNames[selectedReminderMode];
+  if (draft.isCycle && draft.cycleType === "daily") recommendation += "，每日循环仅保留 2 小时内节点";
+  if (draft.isCycle && draft.cycleType === "weekly") recommendation += "，每周循环不使用提前 7 天节点";
+  $("#taskRecommendation").textContent = recommendation;
+  $("#taskReminderCount").textContent = schedule.length + " 个提醒节点";
+  $("#taskSchedule").innerHTML = schedule.map((entry) => {
+    return '<span class="schedule-chip">' + escapeHtml(formatShortDateTime(entry.reminderAt) + " · " + entry.reason) + '</span>';
+  }).join("");
+}
+
+function getLastCreatedTask() {
+  return [...todoList].sort((left, right) => {
+    const leftCreatedAt = new Date(left.createdAt).getTime() || 0;
+    const rightCreatedAt = new Date(right.createdAt).getTime() || 0;
+    return rightCreatedAt - leftCreatedAt || Number(right.id) - Number(left.id);
+  })[0] || null;
+}
+
+function fillTaskEditor(item, datePreset) {
+  const source = item || null;
+  $("#taskTitle").value = source ? source.text : "";
+  $("#taskDescription").value = source ? source.desc || "" : "";
+  $("#taskDate").value = source ? source.date || todayString() : datePreset || todayString();
+  $("#taskDueTime").value = source ? source.dueTime || source.remindTime || "09:00" : "18:00";
+  selectedPriority = source ? source.priority : "mid";
+  selectedTaskType = source && source.isCycle ? "cycle" : "normal";
+  selectedReminderMode = source ? source.reminderMode || "auto" : "auto";
+  $("#taskCycleType").value = source && source.cycleType ? source.cycleType : "daily";
+  $("#taskReminderEnabled").checked = source ? !!source.remind && !source.muteRemind : true;
+  setCustomOffsets(source ? source.customReminderOffsets : [4320, 1440, 0]);
+  setSegmentValue("#taskPriority", selectedPriority);
+  setSegmentValue("#taskType", selectedTaskType);
+  setSegmentValue("#taskReminderMode", selectedReminderMode);
+  updateTaskTypeUi();
+}
+
+function openTaskModal(item, datePreset) {
+  const editing = !!item;
+  const previous = getLastCreatedTask();
+  $("#taskModalTitle").textContent = editing ? "编辑待办" : "新建待办";
+  $("#taskId").value = editing ? String(item.id) : "";
+  fillTaskEditor(item, datePreset);
+  $("#copyLastTask").classList.toggle("hidden", editing);
+  $("#copyLastTask").disabled = !previous;
+  $("#copyLastTask").title = previous ? "复制上次创建任务的全部内容" : "还没有可复制的任务";
+  clearTitleError();
+  $("#taskModal").classList.remove("hidden");
+  setTimeout(() => $("#taskTitle").focus(), 0);
+}
+
+function copyLastCreatedTask() {
+  if ($("#taskId").value) return;
+  const previous = getLastCreatedTask();
+  if (!previous) {
+    showToast("还没有可复制的任务");
+    return;
+  }
+  fillTaskEditor(previous);
+  clearTitleError();
+  $("#taskTitle").focus();
+  $("#taskTitle").select();
+  showToast("已复制上次创建的任务");
+}
+
+function closeTaskModal() {
+  $("#taskModal").classList.add("hidden");
+  clearTitleError();
+}
+
+function showTitleError(message) {
+  $("#taskTitleError").textContent = message;
+  $("#taskTitleError").classList.remove("hidden");
+  $("#taskTitle").classList.add("field-invalid");
+  $("#taskTitle").focus();
+}
+
+function clearTitleError() {
+  $("#taskTitleError").textContent = "";
+  $("#taskTitleError").classList.add("hidden");
+  $("#taskTitle").classList.remove("field-invalid");
+}
+
+async function saveTask() {
+  const title = $("#taskTitle").value.trim();
+  if (!title) {
+    showTitleError("请填写任务标题");
+    return;
+  }
+  const dateValue = $("#taskDate").value;
+  if (!dateValue || !recurrence.parseLocalDate(dateValue)) {
+    showToast("请选择有效日期");
+    $("#taskDate").focus();
+    return;
+  }
+  const editingId = Number($("#taskId").value);
   const payload = {
-    id: Number($("#editId").value),
-    text: $("#eTitle").value.trim(),
-    desc: $("#eDesc").value.trim(),
-    date: $("#eDate").value,
-    priority: $("#ePrio").value,
-    remind: $("#eRemind").checked,
-    remindTime: $("#eRemindTime").value,
-    isCycle: !!editTargetItem.isCycle,
-    cycleType: editTargetItem.isCycle ? $("#eCycleType").value : ""
-  }
-  if(!payload.text) return showTitleError("eTitle")
-  if(payload.isCycle && !payload.date) return alert("请选择循环开始日期")
-  if(payload.remind && !payload.date) return alert("开启通知前请先选择日期")
-  if(payload.remind && !payload.remindTime) return alert("请选择提醒时间")
-  await window.electronAPI.updateTodo(payload)
-  hideEditModal()
-  await refreshHome()
-  await refreshCalendarAfterTaskChange()
-}
-function showDetailModal(item){
-  $("#dTitle").innerText = item.text
-  $("#dDesc").innerText = item.desc || "无备注信息"
-  $("#dDateLabel").innerText = item.isCycle ? "开始日期：" : "截止日期："
-  $("#dDate").innerText = item.date || "无截止日期"
-  const prioMap = {low:"🟢低",mid:"🟡中",high:"🔴高"}
-  $("#dPrio").innerText = prioMap[item.priority]
-  $("#dType").innerText = item.isCycle ? `${cycleTypeLabels[item.cycleType] || ""}循环任务` : "普通待办"
-  $("#dReminder").innerText = getReminderRule(item)
-  $("#detailModal").classList.remove("hidden")
-}
-function hideDetailModal(){$("#detailModal").classList.add("hidden")}
-async function openTodoDetailById(todoId){
-  const id = Number(todoId)
-  if(!Number.isFinite(id)) return
-  const item = (await window.electronAPI.getTodoList()).find(todo=>todo.id === id)
-  if(!item) return
-  ;["editModal","normalModal","cycleModal","deleteModal"].forEach(modalId=>{
-    $("#"+modalId)?.classList.add("hidden")
-  })
-  deleteTargetId = null
-  showDetailModal(item)
-}
-window.electronAPI.onOpenTodoDetail(openTodoDetailById)
-function showDeleteModal(itemId){
-  const taskId = Number(itemId)
-  if(!Number.isInteger(taskId)) return
-  deleteTargetId = taskId
-  $("#deleteConfirmBtn").disabled = false
-  $("#deleteModal").classList.remove("hidden")
-}
-function hideDeleteModal(){
-  deleteTargetId = null
-  $("#deleteConfirmBtn").disabled = false
-  $("#deleteModal").classList.add("hidden")
-}
-async function submitDelete(){
-  const taskId = deleteTargetId
-  if(!Number.isInteger(taskId)) return
-  const confirmButton = $("#deleteConfirmBtn")
-  confirmButton.disabled = true
-  try{
-    await window.electronAPI.deleteTodo(taskId)
-    hideDeleteModal()
-    await refreshHome()
-    await refreshCalendarAfterTaskChange()
-  }catch(error){
-    confirmButton.disabled = false
-    alert("删除任务失败，请稍后重试")
+    text: title,
+    desc: $("#taskDescription").value,
+    date: dateValue,
+    dueTime: $("#taskDueTime").value || "09:00",
+    remindTime: $("#taskDueTime").value || "09:00",
+    priority: selectedPriority,
+    remind: $("#taskReminderEnabled").checked,
+    reminderMode: selectedReminderMode,
+    customReminderOffsets: getCustomOffsets(),
+    isCycle: selectedTaskType === "cycle",
+    cycleType: selectedTaskType === "cycle" ? $("#taskCycleType").value : "",
+    muteRemind: false,
+  };
+  try {
+    $("#saveTask").disabled = true;
+    const result = editingId
+      ? await window.electronAPI.updateTodo({ ...payload, id: editingId })
+      : await window.electronAPI.addTodoItem(payload);
+    if (!result) {
+      showToast("任务未能保存，请检查填写内容");
+      return;
+    }
+    closeTaskModal();
+    await refreshTodoData();
+    showToast(editingId ? "任务已更新" : "任务已创建");
+  } catch (error) {
+    showToast("保存失败：" + (error.message || "请稍后重试"));
+  } finally {
+    $("#saveTask").disabled = false;
   }
 }
-function showAddNormalModal(){
-  clearTitleError("nTitle")
-  $("#nDate").value = getTodayStr()
-  if(!$("#nRemindTime").value) $("#nRemindTime").value = "09:00"
-  syncReminderTime("nRemind", "nRemindTime")
-  updateReminderRule("normal")
-  $("#normalModal").classList.remove("hidden")
+
+function showDetailModal(item) {
+  detailItem = item;
+  const info = classifyTask(item);
+  $("#detailTitle").textContent = item.text;
+  $("#detailDescription").textContent = String(item.desc || "").trim() || "无备注";
+  $("#detailDateLabel").textContent = item.isCycle ? "下次发生" : "截止时间";
+  $("#detailDeadline").textContent = info.date
+    ? formatChineseDate(info.date, true) + " " + (item.dueTime || item.remindTime || "09:00")
+    : "未设置";
+  $("#detailPriority").innerHTML = '<span class="priority-badge ' + item.priority + '">' +
+    priorityNames[item.priority] + '</span>';
+  $("#detailType").textContent = item.isCycle
+    ? (cycleNames[item.cycleType] || "循环") + "循环"
+    : "普通待办";
+  $("#detailReminder").textContent = getReminderSummary(item);
+  $("#detailModal").classList.remove("hidden");
 }
-function hideNormalModal(){$("#normalModal").classList.add("hidden")}
-async function submitNormal(){
-  const text = $("#nTitle").value.trim()
-  const desc = $("#nDesc").value.trim()
-  const date = $("#nDate").value
-  const prio = $("#nPrio").value
-  const remind = $("#nRemind").checked
-  const remindTime = $("#nRemindTime").value
-  if(!text) return showTitleError("nTitle")
-  if(remind && !date) return alert("开启通知前请先选择截止日期")
-  if(remind && !remindTime) return alert("请选择提醒时间")
-  await window.electronAPI.addTodoItem({text,desc,date,priority:prio,remind,remindTime,isCycle:false})
-  hideNormalModal()
-  $("#nTitle").value=""
-  $("#nDesc").value=""
-  await refreshHome()
-  await refreshCalendarAfterTaskChange()
+
+function closeDetailModal() {
+  $("#detailModal").classList.add("hidden");
 }
-function showAddCycleModal(){
-  clearTitleError("cTitle")
-  $("#cDate").value = getTodayStr()
-  if(!$("#cTime").value) $("#cTime").value = "09:00"
-  syncReminderTime("cRemind", "cTime")
-  updateReminderRule("cycle")
-  $("#cycleModal").classList.remove("hidden")
+
+function askDelete(id) {
+  deleteTargetId = Number(id);
+  $("#deleteModal").classList.remove("hidden");
 }
-function hideCycleModal(){$("#cycleModal").classList.add("hidden")}
-async function submitCycle(){
-  const text = $("#cTitle").value.trim()
-  const cycleType = $("#cCycleType").value
-  const date = $("#cDate").value
-  const remindTime = $("#cTime").value
-  const remind = $("#cRemind").checked
-  if(!text) return showTitleError("cTitle")
-  if(!date) return alert("请选择循环开始日期")
-  if(remind && !remindTime) return alert("请选择提醒时间")
-  await window.electronAPI.addTodoItem({
-    text,desc:"",date,priority:"mid",remind,isCycle:true,cycleType,remindTime
-  })
-  hideCycleModal()
-  $("#cTitle").value=""
-  await refreshHome()
-  await refreshCalendarAfterTaskChange()
+
+function closeDeleteModal() {
+  deleteTargetId = null;
+  $("#deleteModal").classList.add("hidden");
 }
-function syncReminderTime(checkboxId, timeInputId){
-  const checkbox = $("#"+checkboxId)
-  const input = $("#"+timeInputId)
-  input.disabled = !checkbox.checked
-}
-function getReminderRule(item){
-  if(!item || !item.remind) return "开启后会按任务日期和提醒时间显示任务提醒。"
-  const time = item.remindTime || "09:00"
-  if(!item.isCycle){
-    return `${item.date || "截止日期"} 当天 ${time} 提醒一次；不会提前一天或每天重复。`
+
+async function confirmDelete() {
+  if (!Number.isFinite(deleteTargetId)) return;
+  try {
+    await window.electronAPI.deleteTodo(deleteTargetId);
+    closeDeleteModal();
+    closeDetailModal();
+    await refreshTodoData();
+    showToast("任务已删除");
+  } catch (error) {
+    showToast("删除失败：" + (error.message || "请稍后重试"));
   }
-  const cycleRule = {
-    daily:"每天",
-    weekly:"每周同一星期",
-    monthly:"每月同一日号"
-  }[item.cycleType] || "每个循环日"
-  return `从 ${item.date || "开始日期"} 起，${cycleRule} ${time} 提醒一次。`
 }
-function updateReminderRule(form){
-  const fields = {
-    edit:{remind:"eRemind",date:"eDate",time:"eRemindTime",cycle:"eCycleType",target:"eReminderRule",isCycle:!!editTargetItem?.isCycle},
-    normal:{remind:"nRemind",date:"nDate",time:"nRemindTime",target:"nReminderRule",isCycle:false},
-    cycle:{remind:"cRemind",date:"cDate",time:"cTime",cycle:"cCycleType",target:"cReminderRule",isCycle:true}
-  }[form]
-  if(!fields) return
-  $("#"+fields.target).innerText = getReminderRule({
-    remind:$("#"+fields.remind).checked,
-    date:$("#"+fields.date).value,
-    remindTime:$("#"+fields.time).value,
-    isCycle:fields.isCycle,
-    cycleType:fields.cycle ? $("#"+fields.cycle).value : ""
-  })
+
+function showToast(message) {
+  const previous = $(".toast");
+  if (previous) previous.remove();
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = String(message || "");
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2400);
 }
-function isOverdue(item){
-  if(!item || item.isCycle || !item.date) return false
-  const today = new Date()
-  today.setHours(0,0,0,0)
-  const t = recurrence.parseLocalDate(item.date)
-  if(!t) return false
-  return t < today
+
+function setBackTopTarget(target) {
+  backTopTarget = target || null;
+  $("#backTopBtn").classList.toggle("show", !!backTopTarget && backTopTarget.scrollTop > 120);
 }
-function isFutureOrToday(item){
-  if(!item || item.isCycle || !item.date) return false
-  const today = new Date()
-  today.setHours(0,0,0,0)
-  const t = recurrence.parseLocalDate(item.date)
-  if(!t) return false
-  return t >= today
+
+function bindBackToTop() {
+  $$(".page-scroll, .agenda-list").forEach((target) => {
+    target.addEventListener("scroll", () => {
+      if (!target.closest(".page.active")) return;
+      setBackTopTarget(target);
+    });
+  });
+  $("#backTopBtn").addEventListener("click", () => {
+    if (backTopTarget) backTopTarget.scrollTo({ top: 0, behavior: "smooth" });
+  });
 }
-function sortTodoList(list){
-  const prioMap = {"high":3,"mid":2,"low":1}
-  const unfinished = list.filter(i=>!i.archived)
-  const finished = list.filter(i=>i.archived)
-  switch(sortType){
-    case "date-asc":
-      unfinished.sort((a,b)=>new Date(a.date||0)-new Date(b.date||0))
-      break
-    case "date-desc":
-      unfinished.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0))
-      break
-    case "prio-high":
-      unfinished.sort((a,b)=>prioMap[b.priority]-prioMap[a.priority])
-      break
-    case "prio-low":
-      unfinished.sort((a,b)=>prioMap[a.priority]-prioMap[b.priority])
-      break
+
+async function triggerDevelopmentReminder() {
+  const button = $("#triggerTestReminderButton");
+  try {
+    button.disabled = true;
+    const shown = await window.electronAPI.triggerDevelopmentReminder();
+    showToast(shown ? "已触发测试提醒" : "测试提醒暂时无法显示");
+  } catch (error) {
+    showToast("触发失败：" + (error.message || "请稍后重试"));
+  } finally {
+    button.disabled = false;
   }
-  return [...unfinished,...finished]
 }
-async function refreshHome(){
-  const now = new Date()
-  const weekArr=["周日","周一","周二","周三","周四","周五","周六"]
-  const pad = n=>String(n).padStart(2,'0')
-  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-  $("#nowDate").innerText = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${weekArr[now.getDay()]} ${timeStr}`
-  const rawList = await window.electronAPI.getTodoList()
-  // 已"不再提醒"的逾期任务从待办列表移除；可在日历中点"添加至待办"重新放回
-  const visibleList = rawList.filter(i=> !(isOverdue(i) && i.muteRemind && !i.archived))
-  const list = sortTodoList(visibleList)
-  const dom = $("#taskList")
-  dom.innerHTML=""
-  list.forEach(item=>{
-    const overdue = isOverdue(item)
-    const priority = ["high","mid","low"].includes(item.priority) ? item.priority : "mid"
-    let cardClass = "item-card glass prio-"+priority
-    if(overdue) cardClass += " overdue"
-    if(item.archived) cardClass += " item-done"
-    if(item.isCycle) cardClass += " cycle-item"
-    const subText = item.isCycle
-      ? `${cycleTypeLabels[item.cycleType] || "循环"} · ${item.date} 起 · ${item.remindTime || "09:00"}`
-      : `${item.date || "无截止日期"}｜${item.desc || ""}`
-    const itemId = safeDataId(item.id)
-    const card = document.createElement("div")
-    card.className = cardClass
-    card.onclick = (e)=>{
-      if(!e.target.classList.contains("more-btn")){
-        showDetailModal(item)
+
+async function saveConfigPatch(patch) {
+  try {
+    appConfig = await window.electronAPI.setGlobalConfig(patch);
+    if (["quietHoursEnabled", "quietStart", "quietEnd"].some((key) => key in patch)) {
+      await refreshReminderServiceStatus();
+    }
+  } catch (error) {
+    showToast("设置保存失败：" + (error.message || "请稍后重试"));
+  }
+}
+
+function applyConfigToSettings() {
+  $("#weekStartSel").value = String(appConfig.weekStartMon !== false);
+  $("#autoStartCheck").checked = !!appConfig.autoStart;
+  $("#autoCheckUpdatesCheck").checked = appConfig.autoCheckUpdates !== false;
+  $("#notificationSoundCheck").checked = appConfig.notificationSound !== false;
+  $("#weeklySummaryCheck").checked = appConfig.weeklySummary !== false;
+  $("#dailySummaryCheck").checked = appConfig.dailySummary !== false;
+  $("#dailySummaryTime").value = appConfig.dailySummaryTime || "09:00";
+  $("#quietHoursCheck").checked = appConfig.quietHoursEnabled !== false;
+  $("#quietStart").value = appConfig.quietStart || "22:00";
+  $("#quietEnd").value = appConfig.quietEnd || "08:00";
+}
+
+function renderDataLocation(location) {
+  const input = $("#dataLocationPath");
+  input.value = location && location.directory ? location.directory : "";
+  input.title = input.value;
+  $("#dataLocationSummary").textContent = location && location.isCustom
+    ? "正在使用自定义本地文件夹"
+    : "默认保存在应用旁的 MyTodoData 文件夹";
+}
+
+function renderStorageStatus(status) {
+  const target = $("#dataHealthText");
+  if (!status || typeof status !== "object") {
+    target.textContent = "暂时无法读取数据状态";
+    target.dataset.tone = "error";
+    return;
+  }
+
+  const messages = Object.values(status.components || {})
+    .filter((entry) => entry && entry.state !== "ok")
+    .map((entry) => entry.message)
+    .filter(Boolean);
+  target.textContent = status.state === "ok"
+    ? "本地数据正常，已启用原子写入与自动备份"
+    : messages.join("；");
+  target.title = messages.join("\n");
+  target.dataset.tone = status.state || "error";
+}
+
+function formatServiceCheckTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "尚未完成首次检查";
+  return "最近检查 " + date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function formatServiceResumeTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "安静时段结束后";
+  return date.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function renderReminderServiceStatus(status) {
+  const label = $("#reminderServiceStatus");
+  const detail = $("#reminderServiceDetail");
+  if (!status || !status.running) {
+    label.textContent = "未运行";
+    label.dataset.tone = "error";
+    detail.textContent = "提醒调度器尚未启动";
+    return;
+  }
+  if (status.lastError) {
+    label.textContent = "异常";
+    label.dataset.tone = "error";
+    detail.textContent = "最近检查失败，可打开日志查看原因";
+    detail.title = status.lastError;
+    return;
+  }
+  if (status.quietHoursActive) {
+    label.textContent = "已暂缓";
+    label.dataset.tone = "pending";
+    detail.textContent = "安静时段中，将于 " +
+      formatServiceResumeTime(status.quietHoursResumeAt) + " 继续提醒";
+    detail.title = "自动提醒仍在运行，安静时段结束后会继续显示待处理提醒";
+    return;
+  }
+  label.textContent = "正常";
+  label.dataset.tone = "ok";
+  detail.textContent = formatServiceCheckTime(status.lastCheckAt) +
+    " · 每 " + (status.intervalSeconds || 30) + " 秒扫描，临近提醒每 " +
+    (status.precisionSeconds || 1) + " 秒校准";
+  detail.title = "";
+}
+
+async function refreshReminderServiceStatus() {
+  try {
+    renderReminderServiceStatus(await window.electronAPI.getReminderServiceStatus());
+  } catch (_error) {
+    renderReminderServiceStatus(null);
+  }
+}
+
+function formatUpdateRate(bytesPerSecond) {
+  const value = Number(bytesPerSecond) || 0;
+  if (value <= 0) return "";
+  if (value < 1024 * 1024) return Math.max(1, Math.round(value / 1024)) + " KB/s";
+  return (value / 1024 / 1024).toFixed(1) + " MB/s";
+}
+
+function getUnsupportedUpdateText(reason) {
+  if (reason === "development") return "开发模式不连接更新服务，请在安装版中测试";
+  if (reason === "portable") return "便携版不支持自动更新，请使用安装版";
+  if (reason === "not-windows") return "当前仅支持 Windows 安装版自动更新";
+  return "更新服务暂不可用";
+}
+
+function renderUpdateState(nextState, announce) {
+  if (!nextState || typeof nextState !== "object") return;
+  updateState = { ...nextState };
+  const phase = updateState.phase || "idle";
+  const version = updateState.availableVersion ? "v" + updateState.availableVersion : "";
+  const status = $("#updateStatusText");
+  const button = $("#updateActionButton");
+  const progress = $("#updateProgress");
+  const progressBar = $("#updateProgressBar");
+  const percent = Math.max(0, Math.min(100, Number(updateState.percent) || 0));
+  let statusText = "通过 GitHub Releases 检查 Windows 正式版";
+  let action = "check";
+  let buttonText = "检查更新";
+  let disabled = false;
+  let tone = "";
+
+  if (phase === "unsupported") {
+    statusText = getUnsupportedUpdateText(updateState.unsupportedReason);
+    disabled = true;
+  } else if (phase === "checking") {
+    statusText = "正在检查新版本…";
+    buttonText = "正在检查";
+    disabled = true;
+  } else if (phase === "up-to-date") {
+    statusText = "当前已是最新版本";
+  } else if (phase === "available") {
+    statusText = "发现新版本 " + version + "，下载后由你决定何时安装";
+    action = "download";
+    buttonText = "下载 " + version;
+    tone = "available";
+  } else if (phase === "downloading") {
+    const speed = formatUpdateRate(updateState.bytesPerSecond);
+    statusText = "正在下载 " + Math.round(percent) + "%" + (speed ? " · " + speed : "");
+    buttonText = "正在下载";
+    disabled = true;
+    tone = "available";
+  } else if (phase === "downloaded") {
+    statusText = version + " 已准备好，重启后完成安装";
+    action = "install";
+    buttonText = "重启并安装";
+    tone = "available";
+  } else if (phase === "error") {
+    statusText = updateState.supported === false
+      ? getUnsupportedUpdateText(updateState.unsupportedReason)
+      : "更新检查失败，请稍后重试";
+    tone = "error";
+    disabled = updateState.supported === false;
+  }
+
+  status.textContent = statusText;
+  status.dataset.tone = tone;
+  button.dataset.action = action;
+  button.textContent = buttonText;
+  button.disabled = disabled;
+  button.classList.toggle("primary", action === "download" || action === "install");
+  button.classList.toggle("secondary", action === "check");
+  progress.classList.toggle("hidden", phase !== "downloading");
+  progress.setAttribute("aria-valuenow", String(Math.round(percent)));
+  progressBar.style.width = percent + "%";
+
+  if (announce && phase !== lastUpdatePhase) {
+    if (phase === "available") showToast("发现 MyTodo " + version + "，可在设置中下载");
+    if (phase === "downloaded") showToast(version + " 已下载，可重启完成安装");
+    if (phase === "up-to-date" && updateState.manual) showToast("当前已是最新版本");
+    if (phase === "error" && updateState.manual) showToast("检查更新失败，请稍后重试");
+  }
+  lastUpdatePhase = phase;
+}
+
+async function handleUpdateAction() {
+  const button = $("#updateActionButton");
+  const action = button.dataset.action || "check";
+  button.disabled = true;
+  try {
+    if (action === "install") {
+      const accepted = await window.electronAPI.installUpdate();
+      if (!accepted) showToast("更新尚未准备好，请重新检查");
+      return;
+    }
+    const nextState = action === "download"
+      ? await window.electronAPI.downloadUpdate()
+      : await window.electronAPI.checkForUpdates();
+    renderUpdateState(nextState, false);
+  } catch (_error) {
+    showToast(action === "download" ? "下载更新失败，请稍后重试" : "检查更新失败，请稍后重试");
+  } finally {
+    if (updateState) renderUpdateState(updateState, false);
+  }
+}
+async function changeDataLocation() {
+  const button = $("#changeDataLocationBtn");
+  button.disabled = true;
+  try {
+    const result = await window.electronAPI.chooseDataLocation();
+    if (!result || result.cancelled) return;
+    renderDataLocation(result);
+    await refreshTodoData();
+    renderStorageStatus(await window.electronAPI.getStorageStatus());
+    if (result.cleanupPending && result.cleanupPending.length) {
+      showToast("数据已迁移，旧位置有文件需要手动清理");
+    } else if (!result.unchanged) {
+      showToast("数据已迁移到新位置");
+    }
+  } catch (error) {
+    showToast("切换失败：" + (error.message || "请检查目标文件夹"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function openSupportDirectory(button, opener, failureMessage) {
+  button.disabled = true;
+  try {
+    await opener();
+  } catch (error) {
+    showToast(failureMessage + "：" + (error.message || "请稍后重试"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function exportDataBackup() {
+  const button = $("#exportDataBackupBtn");
+  button.disabled = true;
+  try {
+    const result = await window.electronAPI.exportDataBackup();
+    if (result && !result.cancelled) showToast("数据备份已导出");
+  } catch (error) {
+    showToast("导出失败：" + (error.message || "请检查目标位置"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function refreshTodoData() {
+  if (refreshPending) return;
+  refreshPending = true;
+  try {
+    const result = await window.electronAPI.getTodoList();
+    todoList = Array.isArray(result) ? result : [];
+    renderHome();
+    if (activePage === "calendar") renderCalendar();
+    if (detailItem) {
+      const updated = todoList.find((item) => item.id === detailItem.id);
+      if (updated && !$("#detailModal").classList.contains("hidden")) showDetailModal(updated);
+    }
+  } finally {
+    refreshPending = false;
+  }
+}
+
+function bindNavigation() {
+  $$(".nav-item[data-page]").forEach((button) => {
+    button.addEventListener("click", () => setPage(button.dataset.page));
+  });
+  $$(".settings-tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      $$(".settings-tab").forEach((entry) => entry.classList.toggle("active", entry === button));
+      $$(".settings-section").forEach((section) => {
+        section.classList.toggle("hidden", section.id !== button.dataset.setting);
+      });
+    });
+  });
+}
+
+function bindHome() {
+  $("#newTaskButton").addEventListener("click", () => openTaskModal());
+  $("#calendarNewTask").addEventListener("click", () => openTaskModal(null, selectedCalendarDate));
+  $("#triggerTestReminderButton").addEventListener("click", triggerDevelopmentReminder);
+  $("#searchButton").addEventListener("click", () => {
+    const input = $("#searchInput");
+    input.classList.toggle("hidden");
+    if (!input.classList.contains("hidden")) input.focus();
+    else {
+      input.value = "";
+      searchText = "";
+      renderHome();
+    }
+  });
+  $("#searchInput").addEventListener("input", (event) => {
+    searchText = event.target.value.trim();
+    renderHome();
+  });
+  $("#taskFilters").addEventListener("click", (event) => {
+    const button = event.target.closest(".filter-button");
+    if (!button) return;
+    activeFilter = button.dataset.filter;
+    renderHome();
+  });
+  $("#sortSelector").addEventListener("change", (event) => {
+    sortType = event.target.value;
+    renderHome();
+  });
+}
+
+function bindTaskModal() {
+  $("#closeTaskModal").addEventListener("click", closeTaskModal);
+  $("#cancelTask").addEventListener("click", closeTaskModal);
+  $("#saveTask").addEventListener("click", saveTask);
+  $("#copyLastTask").addEventListener("click", copyLastCreatedTask);
+  $("#taskTitle").addEventListener("input", clearTitleError);
+  $("#taskModal").addEventListener("mousedown", (event) => {
+    if (event.target === $("#taskModal")) closeTaskModal();
+  });
+  $("#taskPriority").addEventListener("click", (event) => {
+    const button = event.target.closest(".segment");
+    if (!button) return;
+    selectedPriority = button.dataset.value;
+    setSegmentValue("#taskPriority", selectedPriority);
+    updateReminderPreview();
+  });
+  $("#taskType").addEventListener("click", (event) => {
+    const button = event.target.closest(".segment");
+    if (!button) return;
+    selectedTaskType = button.dataset.value;
+    setSegmentValue("#taskType", selectedTaskType);
+    updateTaskTypeUi();
+  });
+  $("#taskReminderMode").addEventListener("click", (event) => {
+    const button = event.target.closest(".segment");
+    if (!button) return;
+    selectedReminderMode = button.dataset.value;
+    if (selectedReminderMode === "custom" && !getCustomOffsets().length) setCustomOffsets([1440, 0]);
+    setSegmentValue("#taskReminderMode", selectedReminderMode);
+    updateReminderPreview();
+  });
+  $("#taskReminderEnabled").addEventListener("change", updateReminderPreview);
+  $("#taskDate").addEventListener("change", updateReminderPreview);
+  $("#taskDueTime").addEventListener("change", updateReminderPreview);
+  $("#taskCycleType").addEventListener("change", updateReminderPreview);
+  $("#customOffsets").addEventListener("change", updateReminderPreview);
+}
+
+function bindDetailAndDelete() {
+  $("#closeDetailModal").addEventListener("click", closeDetailModal);
+  $("#closeDetailButton").addEventListener("click", closeDetailModal);
+  $("#detailModal").addEventListener("mousedown", (event) => {
+    if (event.target === $("#detailModal")) closeDetailModal();
+  });
+  $("#editFromDetail").addEventListener("click", () => {
+    const item = detailItem;
+    closeDetailModal();
+    if (item) openTaskModal(item);
+  });
+  $("#deleteFromDetail").addEventListener("click", () => {
+    if (detailItem) askDelete(detailItem.id);
+  });
+  $("#cancelDelete").addEventListener("click", closeDeleteModal);
+  $("#confirmDelete").addEventListener("click", confirmDelete);
+  $("#deleteModal").addEventListener("mousedown", (event) => {
+    if (event.target === $("#deleteModal")) closeDeleteModal();
+  });
+  $("#globalDropMask").addEventListener("click", closeDropMenu);
+}
+
+function bindCalendar() {
+  $("#prevMonth").addEventListener("click", () => {
+    currentDate = recurrence.shiftMonthToStart(currentDate, -1);
+    selectedCalendarDate = recurrence.formatLocalDate(currentDate);
+    renderCalendar();
+  });
+  $("#nextMonth").addEventListener("click", () => {
+    currentDate = recurrence.shiftMonthToStart(currentDate, 1);
+    selectedCalendarDate = recurrence.formatLocalDate(currentDate);
+    renderCalendar();
+  });
+  $("#calendarToday").addEventListener("click", () => {
+    const today = new Date();
+    currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    selectedCalendarDate = recurrence.formatLocalDate(today);
+    renderCalendar();
+  });
+}
+
+function bindSettings() {
+  $("#autoStartCheck").addEventListener("change", (event) => saveConfigPatch({ autoStart: event.target.checked }));
+  $("#autoCheckUpdatesCheck").addEventListener("change", (event) => {
+    saveConfigPatch({ autoCheckUpdates: event.target.checked });
+  });
+  $("#updateActionButton").addEventListener("click", handleUpdateAction);
+  if (typeof window.electronAPI.onUpdateStatus === "function") {
+    window.electronAPI.onUpdateStatus((state) => renderUpdateState(state, true));
+  }
+  $("#notificationSoundCheck").addEventListener("change", (event) => {
+    saveConfigPatch({ notificationSound: event.target.checked });
+  });
+  $("#weekStartSel").addEventListener("change", async (event) => {
+    await saveConfigPatch({ weekStartMon: event.target.value === "true" });
+    renderCalendar();
+  });
+  $("#weeklySummaryCheck").addEventListener("change", (event) => saveConfigPatch({ weeklySummary: event.target.checked }));
+  $("#dailySummaryCheck").addEventListener("change", (event) => saveConfigPatch({ dailySummary: event.target.checked }));
+  $("#dailySummaryTime").addEventListener("change", (event) => saveConfigPatch({ dailySummaryTime: event.target.value }));
+  $("#quietHoursCheck").addEventListener("change", (event) => saveConfigPatch({ quietHoursEnabled: event.target.checked }));
+  $("#quietStart").addEventListener("change", (event) => saveConfigPatch({ quietStart: event.target.value }));
+  $("#quietEnd").addEventListener("change", (event) => saveConfigPatch({ quietEnd: event.target.value }));
+  $("#changeDataLocationBtn").addEventListener("click", changeDataLocation);
+  $("#openDataLocationBtn").addEventListener("click", (event) => {
+    openSupportDirectory(event.currentTarget, window.electronAPI.openDataDirectory, "无法打开数据目录");
+  });
+  $("#exportDataBackupBtn").addEventListener("click", exportDataBackup);
+}
+
+async function toggleMainWindowMaximize() {
+  const isMaximized = await window.electronAPI.toggleMainWindowMaximize();
+  document.body.classList.toggle("window-maximized", !!isMaximized);
+  $("#maximizeRestoreButton").classList.toggle("is-maximized", !!isMaximized);
+  $("#maximizeRestoreButton").title = isMaximized ? "还原" : "最大化";
+  $("#maximizeRestoreButton").setAttribute("aria-label", isMaximized ? "还原" : "最大化");
+}
+window.toggleMainWindowMaximize = toggleMainWindowMaximize;
+
+function bindWindowEvents() {
+  $("#minimizeButton").addEventListener("click", () => window.electronAPI.winMinimize());
+  $("#maximizeRestoreButton").addEventListener("click", toggleMainWindowMaximize);
+  $("#closeMainWindowButton").addEventListener("click", () => window.electronAPI.winClose());
+  $(".title-bar").addEventListener("dblclick", (event) => {
+    if (!event.target.closest(".title-ctrl")) toggleMainWindowMaximize();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (!$("#deleteModal").classList.contains("hidden")) closeDeleteModal();
+      else if (!$("#taskModal").classList.contains("hidden")) closeTaskModal();
+      else if (!$("#detailModal").classList.contains("hidden")) closeDetailModal();
+      else closeDropMenu();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
+      event.preventDefault();
+      openTaskModal();
+    }
+  });
+  window.addEventListener("focus", () => refreshTodoData());
+  if (typeof window.electronAPI.onTodoDataChanged === "function") {
+    window.electronAPI.onTodoDataChanged(() => refreshTodoData());
+  }
+  if (typeof window.electronAPI.onOpenTodoDetail === "function") {
+    window.electronAPI.onOpenTodoDetail(async (todoId) => {
+      await refreshTodoData();
+      const item = todoList.find((entry) => entry.id === Number(todoId));
+      if (item) {
+        setPage("home");
+        showDetailModal(item);
       }
-    }
-    card.innerHTML = `
-      <div class="item-left">
-        <div class="item-title">${escapeHtml(item.text)} ${item.remind?"🔔":""}</div>
-        <div class="item-desc-text">${escapeHtml(subText)}</div>
-      </div>
-      <div class="item-ctrl">
-        <div class="more-btn" data-id="${itemId}">⋮</div>
-      </div>
-    `
-    const btn = card.querySelector('.more-btn')
-    btn.onclick = (e)=>{
-      e.stopPropagation()
-      showFixedDrop(e,item)
-    }
-    dom.appendChild(card)
-  })
-}
-function hideGlobalDrop(){
-  $("#globalDrop").classList.add('hidden')
-  $("#globalDrop").dataset.forId = ""
-  $("#globalDropMask").classList.add('hidden')
-  // 移除三点按钮的"菜单已打开"高亮
-  document.querySelectorAll('.more-btn.menu-open').forEach(b=>b.classList.remove('menu-open'))
-}
-function showFixedDrop(evt,item){
-  evt.stopPropagation()
-  const menuDom = $("#globalDrop")
-  const itemId = safeDataId(item.id)
-  if(!itemId) return
-  // 再次点击同一个三点按钮，关闭菜单
-  if(!menuDom.classList.contains('hidden') && menuDom.dataset.forId === itemId){
-    hideGlobalDrop()
-    return
-  }
-  menuDom.dataset.forId = itemId
-  // 给当前三点按钮加高亮（先清掉其它按钮的）
-  document.querySelectorAll('.more-btn.menu-open').forEach(b=>b.classList.remove('menu-open'))
-  if(evt.target && evt.target.classList.contains('more-btn')) evt.target.classList.add('menu-open')
-  const inCalendar = $("#calendar").classList.contains("active")
-  let menuHtml = ""
-  if(item.archived){
-    menuHtml += `<div class="drop-item" data-op="restore" data-id="${itemId}">恢复任务</div>`
-    menuHtml += `<div class="drop-item" data-op="del" data-id="${itemId}">删除</div>`
-  }else{
-    if(!item.isCycle){
-      menuHtml += `<div class="drop-item" data-op="edit" data-id="${itemId}">编辑</div>`
-      menuHtml += `<div class="drop-item" data-op="done" data-id="${itemId}">标记完成</div>`
-      if(isOverdue(item)){
-        if(inCalendar){
-          // 日历页：在待办中(muteRemind=false)显示"已添加至待办"且不可点；已移除(muteRemind=true)显示可点的"添加至待办"
-          if(item.muteRemind){
-            menuHtml += `<div class="drop-item" data-op="addTodo" data-id="${itemId}">添加至待办</div>`
-          }else{
-            menuHtml += `<div class="drop-item" data-op="added" data-id="${itemId}" style="opacity:0.55;cursor:default">已添加至待办</div>`
-          }
-        }else{
-          menuHtml += `<div class="drop-item" data-op="mute" data-id="${itemId}">不再提醒</div>`
-        }
-      }
-      menuHtml += `<div class="drop-item" data-op="del" data-id="${itemId}">删除</div>`
-    }else{
-      menuHtml += `<div class="drop-item" data-op="edit" data-id="${itemId}">编辑</div>`
-      menuHtml += `<div class="drop-item" data-op="del" data-id="${itemId}">删除</div>`
-    }
-  }
-  menuDom.innerHTML = menuHtml
-  const rect = evt.target.getBoundingClientRect()
-  // 先显示遮罩和菜单以测量尺寸
-  $("#globalDropMask").classList.remove('hidden')
-  menuDom.style.left = '0px'
-  menuDom.style.top = '0px'
-  menuDom.classList.remove('hidden')
-  const menuH = menuDom.offsetHeight
-  const menuW = menuDom.offsetWidth
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  // 水平定位：默认在按钮左侧，溢出则放右侧
-  let leftPos = rect.left - menuW - 6
-  if(leftPos < 10) leftPos = rect.right + 6
-  if(leftPos + menuW > vw - 6) leftPos = vw - menuW - 6
-  if(leftPos < 6) leftPos = 6
-  // 垂直定位：默认在按钮下方，溢出则放上方
-  let topPos = rect.bottom + 6
-  if(topPos + menuH > vh - 6) topPos = rect.top - menuH - 6
-  if(topPos < 6) topPos = 6
-  menuDom.style.left = `${leftPos}px`
-  menuDom.style.top = `${topPos}px`
-  $$('.drop-item').forEach(el=>{
-    el.onclick = async (ev)=>{
-      const op = el.dataset.op
-      const tid = Number(el.dataset.id)
-      if(op === 'added'){ ev.stopPropagation(); return }
-      hideGlobalDrop()
-      if(op === 'edit'){
-        const all = await window.electronAPI.getTodoList()
-        const target = all.find(x=>x.id === tid)
-        showEditModal(target)
-      }else if(op === 'done'){
-        await window.electronAPI.archiveTodo(tid)
-        await refreshHome()
-        await refreshCalendarAfterTaskChange()
-      }else if(op === 'restore'){
-        await window.electronAPI.unarchiveTodo(tid)
-        await refreshHome()
-        await refreshCalendarAfterTaskChange()
-      }else if(op === 'mute'){
-        await window.electronAPI.muteTodoRemind(tid)
-        await refreshHome()
-        await refreshCalendarAfterTaskChange()
-      }else if(op === 'addTodo'){
-        await window.electronAPI.addToToday(tid)
-        await refreshHome()
-        await refreshCalendarAfterTaskChange()
-      }else if(op === 'del'){
-        showDeleteModal(tid)
-      }
-    }
-  })
-}
-document.body.onclick = hideGlobalDrop
-// 点击三点菜单的透明遮罩关闭菜单
-$("#globalDropMask").addEventListener('click', e=>{
-  e.stopPropagation()
-  hideGlobalDrop()
-})
-// 点击遮罩关闭任务详情弹窗
-$("#detailModal").addEventListener('click', e=>{
-  if(e.target.id === 'detailModal') hideDetailModal()
-})
-$("#deleteModal").addEventListener('click', e=>{
-  if(e.target.id === 'deleteModal') hideDeleteModal()
-})
-// 回到顶部按钮：监听待办列表与日历列表滚动
-const backTopBtn = $("#backTopBtn")
-const homeListWrap = $("#taskList")
-const calendarScroll = $("#calendarScroll")
-function updateBackTopVisible(){
-  const el = backTopBtn._currentTarget
-  if(!el){ backTopBtn.classList.remove('show'); return }
-  if(el.scrollTop > 120) backTopBtn.classList.add('show')
-  else backTopBtn.classList.remove('show')
-}
-homeListWrap.addEventListener('scroll', ()=>{
-  backTopBtn._currentTarget = homeListWrap
-  updateBackTopVisible()
-})
-calendarScroll.addEventListener('scroll', ()=>{
-  backTopBtn._currentTarget = calendarScroll
-  updateBackTopVisible()
-})
-backTopBtn.addEventListener('click', ()=>{
-  const el = backTopBtn._currentTarget
-  if(el) el.scrollTo({top:0, behavior:'smooth'})
-})
-async function openFloat(){
-  await window.electronAPI.toggleFloatWin()
-}
-function markCalendarDirty(){
-  calendarDirty = true
-  calendarTodoCache = null
-}
-function updateCalendarSelection(){
-  $$("#calendarBody .calendar-day.active-day").forEach(day=>day.classList.remove("active-day"))
-  const selectedDay = $(`#calendarBody .calendar-day[data-date="${selectedCalendarDate}"]`)
-  if(selectedDay) selectedDay.classList.add("active-day")
-}
-function selectCalendarDate(dateStr){
-  if(selectedCalendarDate === dateStr) return
-  selectedCalendarDate = dateStr
-  if(!calendarTodoCache){
-    calendarDirty = true
-    refreshCalendar({rebuild:true,showLoading:true})
-    return
-  }
-  updateCalendarSelection()
-  renderDayTaskPanel(dateStr,calendarTodoCache)
-}
-async function refreshCalendar({rebuild=false,showLoading=false}={}){
-  const needsTodoLoad = calendarDirty || !calendarTodoCache
-  if(showLoading && (rebuild || needsTodoLoad)) prefillDayTaskBox(selectedCalendarDate)
-  if(needsTodoLoad){
-    calendarTodoCache = await window.electronAPI.getTodoList()
-    calendarDirty = false
-  }
-  if(rebuild || needsTodoLoad) renderCalendar(calendarTodoCache)
-  renderDayTaskPanel(selectedCalendarDate,calendarTodoCache)
-}
-async function refreshCalendarAfterTaskChange(){
-  markCalendarDirty()
-  if(!$("#calendar").classList.contains("active")) return
-  await refreshCalendar({rebuild:true,showLoading:true})
-}
-function renderCalendar(allTodo = calendarTodoCache || []){
-  const savedScroll = $("#calendarScroll").scrollTop
-  const year = currentDate.getFullYear()
-  const month = currentDate.getMonth()
-  $("#monthTitle").innerText = `${year}年${month+1}月`
-  const weekStartMon = !!appConfig.weekStartMon
-  const weekArr = weekStartMon ? ["一","二","三","四","五","六","日"] : ["日","一","二","三","四","五","六"]
-  const weekRowDom = $("#weekRow")
-  weekRowDom.innerHTML=""
-  weekArr.forEach(w=>{
-    const d = document.createElement("div")
-    d.className="week-title";d.innerText=w;weekRowDom.appendChild(d)
-  })
-  const first = new Date(year,month,1)
-  const last = new Date(year,month+1,0)
-  let startWeek = first.getDay()
-  if(weekStartMon){
-    startWeek = startWeek===0 ? 6 : startWeek-1
-  }
-  const totalDay = last.getDate()
-  const body = $("#calendarBody")
-  body.innerHTML = ""
-  for(let i=0;i<startWeek;i++){
-    const empty = document.createElement("div")
-    empty.className = "calendar-day"
-    empty.innerHTML = `<div class="day-num"></div><div class="dot-placeholder"></div>`
-    body.appendChild(empty)
-  }
-  for(let d=1;d<=totalDay;d++){
-    const dayDom = document.createElement("div")
-    dayDom.className = "calendar-day"
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-    dayDom.dataset.date = dateStr
-    dayDom.innerHTML = `<div class="day-num">${d}</div><div class="dot-placeholder"></div>`
-    const hasTask = allTodo.some(t=>t.isCycle ? recurrence.occursOnDate(t,dateStr) : t.date === dateStr)
-    if(hasTask) dayDom.classList.add("has-todo")
-    if(selectedCalendarDate === dateStr) dayDom.classList.add("active-day")
-    dayDom.onclick = ()=>selectCalendarDate(dateStr)
-    body.appendChild(dayDom)
-  }
-  $("#calendarScroll").scrollTop = savedScroll
-}
-// 切换日期/月份前预占位，避免当日任务在顶部闪一下
-function prefillDayTaskBox(dateStr){
-  const box = $("#dayTaskBox")
-  const listDom = $("#dayTaskList")
-  box.classList.remove("hidden")
-  // 撑住当前内容高度，防止 prefill 缩短内容导致外层 scrollTop 被夹断
-  const curH = listDom.offsetHeight
-  listDom.style.minHeight = curH + 'px'
-  listDom.innerHTML = `<p style="color:#94a3b8">加载中…</p>`
-}
-async function renderDayTaskPanel(dateStr,allTodo){
-  const box = $("#dayTaskBox")
-  const listDom = $("#dayTaskList")
-  box.classList.remove("hidden")
-  listDom.innerHTML = ""
-  listDom.style.minHeight = ''  // 清除 prefill 撑高的占位
-  const dayList = allTodo.filter(item=>item.isCycle ? recurrence.occursOnDate(item,dateStr) : item.date === dateStr)
-  if(!dayList.length){
-    listDom.innerHTML = "<p>今日暂无任务</p>"
-    return
-  }
-  dayList.forEach(item=>{
-    const overdue = isOverdue(item)
-    const futureToday = isFutureOrToday(item)
-    let statusText = ""
-    const prioColorMap = {high:"#ef4444",mid:"#f59e0b",low:"#10b981"}
-    let rowStyle = `border-left-color:${prioColorMap[item.priority]||"#9ca3af"};`
-    let rowClass = "day-task-row glass"
-    const itemId = safeDataId(item.id)
-    if(item.archived){
-      rowClass += " item-done"
-      statusText = `<span class="tag-done">已完成</span>`
-    }else if(item.isCycle){
-      statusText = `<span class="tag-normal">${cycleTypeLabels[item.cycleType] || "循环"}</span>`
-    }else if(overdue){
-      rowClass += " overdue"
-      if(item.muteRemind){
-        statusText = `<span class="tag-overdue">逾期</span>`
-      }else{
-        statusText = `<span class="tag-overdue">逾期</span><span class="tag-done">已添加至待办</span>`
-      }
-    }else if(futureToday){
-      statusText = `<span class="tag-normal">未完成</span>`
-    }
-    const row = document.createElement("div")
-    row.className = rowClass
-    row.style.cssText = rowStyle
-    row.innerHTML = `
-        <div class="item-left">
-        <div class="item-title">${escapeHtml(item.text)} ${item.remind?"🔔":""} ${statusText}</div>
-        <div class="item-desc-text">${escapeHtml(item.desc || "无备注")}</div>
-      </div>
-      <div class="item-ctrl">
-        <div class="more-btn" data-id="${itemId}">⋮</div>
-      </div>
-    `
-    const moreBtn = row.querySelector('.more-btn')
-    moreBtn.onclick = (e) => {
-      e.stopPropagation()
-      showFixedDrop(e, item)
-    }
-    row.onclick = (e) => {
-      if (!e.target.classList.contains('more-btn')) {
-        showDetailModal(item)
-      }
-    }
-    listDom.appendChild(row)
-  })
-}
-$("#prevMonth").onclick = async () => {
-  currentDate = recurrence.shiftMonthToStart(currentDate, -1)
-  selectedCalendarDate = firstDayStrOf(currentDate)
-  await refreshCalendar({rebuild:true,showLoading:calendarDirty || !calendarTodoCache})
-}
-$("#nextMonth").onclick = async () => {
-  currentDate = recurrence.shiftMonthToStart(currentDate, 1)
-  selectedCalendarDate = firstDayStrOf(currentDate)
-  await refreshCalendar({rebuild:true,showLoading:calendarDirty || !calendarTodoCache})
-}
-function firstDayStrOf(d){
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`
-}
-function renderDataLocation(location){
-  const input = $("#dataLocationPath")
-  input.value = location?.directory || ""
-  input.title = input.value
-}
-async function changeDataLocation(){
-  const button = $("#changeDataLocationBtn")
-  button.disabled = true
-  try{
-    const result = await window.electronAPI.chooseDataLocation()
-    if(result.cancelled) return
-    renderDataLocation(result)
-    if(result.cleanupPending?.length){
-      alert(`数据位置已切换，但旧位置仍保留：${result.cleanupPending.join("、")}`)
-    }else if(!result.unchanged){
-      alert("数据存储位置已切换")
-    }
-  }catch(error){
-    alert(`切换数据存储位置失败：${error.message || "请检查目标文件夹"}`)
-  }finally{
-    button.disabled = false
+    });
   }
 }
-async function initApp(){
-  const appInfo = await window.electronAPI.getAppInfo()
-  $("#appVersion").innerText = `v${appInfo.version}`
-  const cfgRes = await window.electronAPI.getFloatConfig()
-  appConfig = cfgRes.config
-  $("#weekStartSel").value = String(appConfig.weekStartMon)
-  $("#autoStartCheck").checked = !!appConfig.autoStart
-  renderDataLocation(await window.electronAPI.getDataLocation())
-  $("#changeDataLocationBtn").onclick = changeDataLocation
-  $("#weekStartSel").onchange = async e=>{
-    appConfig.weekStartMon = e.target.value === "true"
-    await window.electronAPI.setGlobalConfig({weekStartMon: appConfig.weekStartMon})
-    if($("#calendar").classList.contains("active")){
-      await refreshCalendar({rebuild:true,showLoading:false})
-    }
-  }
-  $("#autoStartCheck").onchange = async e=>{
-    appConfig.autoStart = e.target.checked
-    await window.electronAPI.setGlobalConfig({autoStart: appConfig.autoStart})
-  }
-  const reminderForms = [
-    {checkbox:"eRemind",time:"eRemindTime",form:"edit"},
-    {checkbox:"nRemind",time:"nRemindTime",form:"normal"},
-    {checkbox:"cRemind",time:"cTime",form:"cycle"}
-  ]
-  reminderForms.forEach(({checkbox,time,form})=>{
-    $("#"+checkbox).onchange = ()=>{
-      syncReminderTime(checkbox,time)
-      updateReminderRule(form)
-    }
-    syncReminderTime(checkbox,time)
-  })
-  ;[["eDate","edit"],["eRemindTime","edit"],["eCycleType","edit"],["nDate","normal"],["nRemindTime","normal"],["cDate","cycle"],["cTime","cycle"],["cCycleType","cycle"]].forEach(([id,form])=>{
-    $("#"+id).onchange = ()=>updateReminderRule(form)
-  })
-  refreshHome()
+
+async function initApp() {
+  bindNavigation();
+  bindHome();
+  bindTaskModal();
+  bindDetailAndDelete();
+  bindCalendar();
+  bindSettings();
+  bindBackToTop();
+  bindWindowEvents();
+  const [
+    appInfo,
+    configResult,
+    dataLocation,
+    initialUpdateState,
+    storageStatus,
+    reminderServiceStatus,
+  ] = await Promise.all([
+    window.electronAPI.getAppInfo(),
+    window.electronAPI.getFloatConfig(),
+    window.electronAPI.getDataLocation(),
+    window.electronAPI.getUpdateState(),
+    window.electronAPI.getStorageStatus(),
+    window.electronAPI.getReminderServiceStatus(),
+  ]);
+  $("#appVersion").textContent = "v" + appInfo.version;
+  $("#triggerTestReminderButton").classList.toggle("hidden", !!appInfo.isPackaged);
+  appConfig = configResult && configResult.config ? configResult.config : {};
+  applyConfigToSettings();
+  renderDataLocation(dataLocation);
+  renderStorageStatus(storageStatus);
+  renderUpdateState(initialUpdateState, false);
+  renderReminderServiceStatus(reminderServiceStatus);
+  setTimeout(refreshReminderServiceStatus, 1000);
+  setInterval(refreshReminderServiceStatus, 30 * 1000);
+  await refreshTodoData();
+  setPage("home");
 }
-window.onload = ()=>{
-  initApp()
-  startClock()
-  scheduleHourlyRefresh()
-}
-// 每秒更新顶部时间显示
-function startClock(){
-  updateNowTime()
-  setInterval(updateNowTime, 1000)
-}
-function updateNowTime(){
-  const now = new Date()
-  const weekArr=["周日","周一","周二","周三","周四","周五","周六"]
-  const pad = n=>String(n).padStart(2,'0')
-  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-  $("#nowDate").innerText = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${weekArr[now.getDay()]} ${timeStr}`
-}
-// 整点刷新：在下一个整点触发一次数据刷新，之后每小时触发一次
-function scheduleHourlyRefresh(){
-  const now = new Date()
-  const next = new Date(now)
-  next.setHours(now.getHours()+1, 0, 0, 500) // 整点 + 0.5s
-  const delay = next.getTime() - now.getTime()
-  setTimeout(()=>{
-    refreshAll()
-    setInterval(refreshAll, 60*60*1000)
-  }, delay)
-}
-// 刷新当前激活页（待办/日历）
-async function refreshAll(){
-  await refreshHome()
-  if($("#calendar").classList.contains("active")){
-    await refreshCalendar({rebuild:calendarDirty || !calendarTodoCache,showLoading:false})
-  }
-}
+
+window.addEventListener("DOMContentLoaded", () => {
+  initApp().catch((error) => {
+    showToast("应用初始化失败：" + (error.message || "未知错误"));
+  });
+});

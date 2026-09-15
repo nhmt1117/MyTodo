@@ -14,6 +14,12 @@ const DEFAULT_DATA_DIRECTORY_NAME = "MyTodoData";
 
 let defaultDataDirectory = null;
 let activeDataDirectory = null;
+let dataLocationStatus = { state: "pending", message: "数据位置尚未初始化" };
+
+function isLocationRecord(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value) &&
+    (value.directory === undefined || typeof value.directory === "string");
+}
 
 function normalizeDataDirectory(directory) {
   const value = String(directory || "").trim();
@@ -31,7 +37,10 @@ function isSameDirectory(left, right) {
 }
 
 function getLocationFilePath() {
-  return path.join(app.getPath("appData"), LOCATION_FILE_NAME);
+  const baseDirectory = hasUserDataOverride()
+    ? app.getPath("userData")
+    : app.getPath("appData");
+  return path.join(baseDirectory, LOCATION_FILE_NAME);
 }
 
 function hasUserDataOverride() {
@@ -82,17 +91,27 @@ function migrateLegacyDataIfNeeded(defaultDirectory) {
 }
 function initializeDataDirectory() {
   const defaultDirectory = getDefaultDataDirectory();
-  const result = readJsonWithBackup(getLocationFilePath(), {});
+  const result = readJsonWithBackup(getLocationFilePath(), {}, isLocationRecord);
   const configuredDirectory = normalizeDataDirectory(result.value?.directory);
   activeDataDirectory = configuredDirectory || defaultDirectory;
 
   if (!configuredDirectory) migrateLegacyDataIfNeeded(defaultDirectory);
 
   if (result.source === "backup") {
+    dataLocationStatus = {
+      state: "recovered",
+      message: "数据位置记录已从备份恢复",
+    };
     console.warn("数据位置记录损坏，已从备份恢复", result.primaryError);
-    writeJsonAtomic(getLocationFilePath(), { directory: activeDataDirectory });
+    writeLocation(activeDataDirectory);
   } else if (result.primaryError) {
+    dataLocationStatus = {
+      state: "error",
+      message: "数据位置记录无法读取，已临时使用默认位置",
+    };
     console.error("数据位置记录无法读取，已使用默认位置", result.primaryError);
+  } else {
+    dataLocationStatus = { state: "ok", message: "数据位置正常" };
   }
 
   return getDataLocation();
@@ -114,6 +133,10 @@ function getDataLocation() {
     defaultDirectory: getDefaultDataDirectory(),
     isCustom: !isSameDirectory(activeDataDirectory, getDefaultDataDirectory()),
   };
+}
+
+function getDataLocationStatus() {
+  return { ...dataLocationStatus };
 }
 
 function getDataFilePath(fileName) {
@@ -147,7 +170,7 @@ function removeFiles(directory, fileNames) {
 }
 
 function writeLocation(directory) {
-  writeJsonAtomic(getLocationFilePath(), { directory });
+  writeJsonAtomic(getLocationFilePath(), { directory }, isLocationRecord);
 }
 
 function migrateDataDirectory(targetDirectory) {
@@ -197,6 +220,7 @@ function migrateDataDirectory(targetDirectory) {
   }
 
   activeDataDirectory = target;
+  dataLocationStatus = { state: "ok", message: "数据位置正常" };
   const cleanupFailures = removeFiles(sourceDirectory, sourceFiles);
   return {
     ...getDataLocation(),
@@ -211,6 +235,7 @@ module.exports = {
   getDataDirectory,
   getDataFilePath,
   getDataLocation,
+  getDataLocationStatus,
   getPackagedDataDirectory,
   initializeDataDirectory,
   isSameDirectory,

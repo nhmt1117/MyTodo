@@ -1,6 +1,6 @@
 {
   "name": "mytodo",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "MyTodo 个人待办与循环提醒工具",
   "main": "main.js",
   "author": "nhmt",
@@ -18,7 +18,7 @@
     "build:linux": "electron-builder --linux",
     "pack": "electron-builder --dir",
     "test": "node --test",
-    "check": "node --check main.js && node --check preload.js && node --check src/main/config.js && node --check src/main/dataLocation.js && node --check src/main/storage.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && node --check renderer/reminder.js && npm test"
+    "check": "node --check main.js && node --check preload.js && node --check src/main/backup.js && node --check src/main/config.js && node --check src/main/dataLocation.js && node --check src/main/installOptions.js && node --check src/main/logger.js && node --check src/main/storage.js && node --check src/main/supportTools.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/updateManager.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && node --check renderer/reminder.js && npm test"
   },
   "build": {
     "appId": "com.nhmt.mytodo",
@@ -32,6 +32,7 @@
       "index.html",
       "float.html",
       "reminder.html",
+      "assets/**/*",
       "renderer/**/*",
       "src/**/*",
       "wordlist.json",
@@ -40,21 +41,26 @@
       "CHANGELOG.md",
       "V1_RELEASE_CHECKLIST.md",
       "V1_RELEASE_TEST_REPORT.md",
+      "V2_RELEASE_CHECKLIST.md",
+      "V2_RELEASE_TEST_REPORT.md",
       "LICENSE",
       "!node_modules/.cache",
       "!dist"
     ],
     "asar": true,
+    "electronDist": "node_modules/electron/dist",
     "win": {
       "target": "nsis",
       "icon": "MyTodo.ico"
     },
     "nsis": {
       "oneClick": false,
+      "include": "build/installer.nsh",
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MyTodo"
+      "shortcutName": "MyTodo",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
@@ -67,6 +73,10 @@
         "AppImage"
       ],
       "category": "Utility"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://github.com/nhmt1117/MyTodo/releases/latest/download"
     }
   },
   "devDependencies": {
@@ -78,5 +88,8 @@
     "extract-zip": {
       "yauzl": "3.4.0"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

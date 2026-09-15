@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+  <title>MyTodo 提醒策略原型</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:"Microsoft YaHei",system-ui,sans-serif;letter-spacing:0}
+    :root{--ink:#172033;--muted:#687386;--line:#d8dee7;--surface:#f8fafc;--panel:#fff;--app:#e7edf2;--indigo:#4f46e5;--teal:#0891b2;--red:#dc2626;--amber:#d97706;--green:#059669}
+    body{min-width:760px;min-height:680px;background:#d9dee5;color:var(--ink);padding:18px}
+    button,input,select{font:inherit;color:inherit}
+    button{cursor:pointer}
+    .hidden{display:none!important}
+    .app-shell{width:min(1180px,calc(100vw - 36px));height:min(790px,calc(100vh - 36px));min-height:640px;margin:auto;overflow:hidden;border:1px solid rgba(100,116,139,.3);border-radius:12px;background:var(--app);box-shadow:0 1px 3px rgba(15,23,42,.07),0 10px 30px rgba(15,23,42,.14)}
+    .titlebar{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 13px 0 17px;border-bottom:1px solid rgba(148,163,184,.24)}
+    .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:650}
+    .brand img{width:23px;height:23px}
+    .window-actions{display:flex;gap:7px}
+    .window-button{position:relative;width:27px;height:27px;border:0;border-radius:6px;background:rgba(226,232,240,.72)}
+    .window-button:hover{background:#d8e0e9}
+    .window-button.close:hover{background:#ef4444;color:#fff}
+    .window-button.min::before{content:"";position:absolute;width:10px;height:1px;background:currentColor;left:8px;top:14px}
+    .window-button.max::before{content:"";position:absolute;width:9px;height:8px;border:1.3px solid currentColor;left:8px;top:8px}
+    .window-button.close::before,.window-button.close::after{content:"";position:absolute;width:11px;height:1.4px;background:currentColor;left:8px;top:13px}
+    .window-button.close::before{transform:rotate(45deg)}.window-button.close::after{transform:rotate(-45deg)}
+    .workspace{height:calc(100% - 42px);display:grid;grid-template-columns:66px minmax(0,1fr);gap:12px;padding:12px}
+    .sidebar{display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:10px 0;border:1px solid rgba(255,255,255,.76);border-radius:8px;background:rgba(255,255,255,.43)}
+    .nav-group{display:grid;gap:8px}
+    .icon-button{width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#536176}
+    .icon-button svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .icon-button:hover{background:rgba(255,255,255,.72)}
+    .icon-button.active{background:#d8d8ff;color:var(--indigo)}
+    .main-window{min-width:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.82);border-radius:8px;background:rgba(248,250,252,.72)}
+    .page-header{height:74px;flex:0 0 74px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid var(--line)}
+    .page-heading h1{font-size:18px;font-weight:700}.page-heading p{margin-top:4px;color:var(--muted);font-size:12px}
+    .header-actions{display:flex;align-items:center;gap:12px}
+    .running{display:flex;align-items:center;gap:7px;color:#526071;font-size:12px}.running-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(5,150,105,.12)}
+    .button{height:34px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 13px;border:1px solid transparent;border-radius:7px;background:#fff;font-size:12px;font-weight:600}
+    .button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .button.secondary{border-color:#cbd5e1;color:#3f4b5d}.button.secondary:hover{background:#f1f5f9}
+    .button.primary{background:var(--indigo);color:#fff}.button.primary:hover{background:#4338ca}
+    .view-tabs{height:45px;flex:0 0 45px;display:flex;gap:20px;padding:0 22px;border-bottom:1px solid var(--line)}
+    .view-tab{position:relative;border:0;background:transparent;color:#748094;font-size:13px;font-weight:600}
+    .view-tab.active{color:var(--ink)}.view-tab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--indigo)}
+    .count{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:5px;padding:0 5px;border-radius:9px;background:#e2e8f0;color:#566275;font-size:10px}
+    .planner{min-height:0;flex:1;display:grid;grid-template-columns:300px minmax(0,1fr)}
+    .task-pane{min-height:0;overflow:auto;border-right:1px solid var(--line);background:rgba(248,250,252,.52)}
+    .pane-title{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--line)}
+    .pane-title strong{font-size:12px}.pane-title span{color:var(--muted);font-size:11px}
+    .task-list{list-style:none}
+    .task-item{width:100%;display:grid;grid-template-columns:4px minmax(0,1fr);gap:11px;padding:14px 15px;border:0;border-bottom:1px solid #e3e8ef;background:transparent;text-align:left}
+    .task-item:hover{background:#f7f9fc}.task-item.active{background:#eef0ff}
+    .priority-bar{width:4px;height:38px;border-radius:2px;background:var(--amber)}.task-item[data-priority="high"] .priority-bar{background:var(--red)}.task-item[data-priority="low"] .priority-bar{background:var(--green)}
+    .task-copy{min-width:0}.task-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.task-meta{display:flex;justify-content:space-between;gap:8px;margin-top:7px;color:var(--muted);font-size:10px}.task-meta .urgent{color:var(--red);font-weight:700}
+    .editor{min-width:0;min-height:0;display:flex;flex-direction:column;background:rgba(255,255,255,.5)}
+    .editor-scroll{min-height:0;overflow:auto;padding:20px 24px 14px}
+    .editor-title{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.editor-title h2{font-size:16px}.editor-title p{margin-top:4px;color:var(--muted);font-size:11px}
+    .mode-badge{flex:0 0 auto;padding:5px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700}
+    .form-grid{display:grid;grid-template-columns:minmax(0,1fr) 205px;gap:15px}
+    .field{margin-bottom:16px}.field label,.section-label{display:block;margin-bottom:7px;color:#576477;font-size:11px;font-weight:700}
+    .input{width:100%;height:38px;padding:0 11px;border:1px solid #cfd7e2;border-radius:7px;background:#fff;outline:none;font-size:12px}.input:focus{border-color:#8b86ee;box-shadow:0 0 0 3px rgba(79,70,229,.1)}
+    .segmented{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:3px;border:1px solid #d5dce6;border-radius:8px;background:#eef2f6}
+    .segment{height:31px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:#697588;font-size:11px;white-space:nowrap}.segment:hover{color:#303b4c}.segment.active{background:#fff;color:var(--indigo);font-weight:700;box-shadow:0 1px 3px rgba(15,23,42,.1)}
+    .priority-segments .segment[data-value="high"].active{color:var(--red)}.priority-segments .segment[data-value="mid"].active{color:var(--amber)}.priority-segments .segment[data-value="low"].active{color:var(--green)}
+    .recommendation{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 0 14px;padding:9px 11px;border-left:3px solid var(--indigo);background:#f1f3ff;color:#4a5670;font-size:11px}.recommendation strong{color:#3730a3}
+    .schedule-panel{border:1px solid #d8dee7;border-radius:8px;background:#fff;overflow:hidden}
+    .schedule-head{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 13px;border-bottom:1px solid #e3e8ef}.schedule-head strong{font-size:12px}.schedule-head span{color:var(--muted);font-size:10px}
+    .timeline{list-style:none;padding:8px 13px 9px}
+    .timeline-item{position:relative;display:grid;grid-template-columns:116px 16px minmax(0,1fr);align-items:center;min-height:31px;color:#536075;font-size:11px}
+    .timeline-time{font-variant-numeric:tabular-nums;color:#303b4c;font-weight:600}.timeline-dot{position:relative;width:8px;height:8px;margin:auto;border:2px solid var(--indigo);border-radius:50%;background:#fff;z-index:1}.timeline-item:not(:last-child) .timeline-dot::after{content:"";position:absolute;top:7px;left:2px;width:1px;height:24px;background:#ccd3df}.timeline-item:last-child .timeline-dot{border-color:var(--red);background:var(--red)}
+    .custom-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:9px}.check-chip{display:flex;align-items:center;justify-content:center;gap:5px;height:31px;border:1px solid #d5dce6;border-radius:7px;background:#fff;color:#5d687a;font-size:10px}.check-chip input{accent-color:var(--indigo)}
+    .preferences{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.preference{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border-top:1px solid #e0e5ec}.preference-copy strong{display:block;font-size:11px}.preference-copy span{display:block;margin-top:3px;color:var(--muted);font-size:10px}
+    .switch{position:relative;width:34px;height:20px;flex:0 0 34px}.switch input{position:absolute;opacity:0}.switch span{position:absolute;inset:0;border-radius:10px;background:#cbd5e1;transition:.18s}.switch span::after{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:.18s}.switch input:checked+span{background:var(--indigo)}.switch input:checked+span::after{transform:translateX(14px)}
+    .editor-footer{height:58px;flex:0 0 58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-top:1px solid var(--line);background:rgba(248,250,252,.86)}
+    .save-note{color:var(--muted);font-size:10px}.footer-actions{display:flex;gap:8px}
+    .week-view{min-height:0;flex:1;overflow:auto;padding:20px 22px;background:rgba(255,255,255,.5)}
+    .week-summary{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:15px}.week-summary h2{font-size:16px}.week-summary p{margin-top:4px;color:var(--muted);font-size:11px}.summary-numbers{display:flex;gap:18px}.summary-number{text-align:right}.summary-number strong{display:block;font-size:18px}.summary-number span{color:var(--muted);font-size:9px}
+    .week-grid{display:grid;grid-template-columns:repeat(7,minmax(100px,1fr));border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden}
+    .day{min-height:194px;padding:10px;border-right:1px solid #e2e7ee}.day:last-child{border-right:0}.day.today{background:#f4f4ff}.day-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;color:var(--muted);font-size:10px}.day-head strong{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;color:#374151;font-size:12px}.today .day-head strong{background:var(--indigo);color:#fff}
+    .week-task{margin-bottom:7px;padding:7px 8px;border-left:3px solid var(--amber);border-radius:5px;background:#f7f8fa;font-size:10px;line-height:1.4}.week-task.high{border-left-color:var(--red)}.week-task.low{border-left-color:var(--green)}.week-task time{display:block;margin-top:3px;color:var(--muted);font-size:9px}
+    .digest-band{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:20px;margin-top:14px;padding:14px 15px;border:1px solid var(--line);border-radius:8px;background:#fff}.digest-band h3{font-size:12px}.digest-band p{margin-top:4px;color:var(--muted);font-size:10px}.digest-controls{display:flex;align-items:center;gap:10px}.mini-select{height:32px;padding:0 9px;border:1px solid #d5dce6;border-radius:7px;background:#fff;font-size:11px}
+    .toast{position:fixed;right:30px;bottom:28px;width:390px;overflow:visible;border:1px solid rgba(148,163,184,.45);border-left:4px solid var(--red);border-radius:10px;background:#f8fafc;box-shadow:0 14px 34px rgba(15,23,42,.2);animation:toast-in .18s ease-out}
+    .toast-header{height:50px;display:flex;align-items:center;justify-content:space-between;padding:8px 11px}.toast-brand{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}.toast-brand img{width:28px;height:28px}
+    .toast-close{position:relative;width:28px;height:28px;border:0;border-radius:6px;background:transparent}.toast-close:hover{background:#e2e8f0}.toast-close::before,.toast-close::after{content:"";position:absolute;width:11px;height:1.4px;left:9px;top:13px;background:currentColor}.toast-close::before{transform:rotate(45deg)}.toast-close::after{transform:rotate(-45deg)}
+    .toast-content{padding:9px 15px 10px}.toast-content h3{font-size:16px}.toast-content p{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.45}.toast-deadline{display:flex;gap:7px;margin-top:12px;color:var(--muted);font-size:10px}.toast-deadline strong{color:#344055}
+    .toast-footer{height:52px;display:flex;align-items:center;justify-content:flex-end;gap:7px;padding:8px 11px}.snooze-wrap{position:relative}.snooze-menu{position:absolute;right:0;bottom:39px;width:142px;padding:5px;border:1px solid #d5dce6;border-radius:7px;background:#fff;box-shadow:0 8px 22px rgba(15,23,42,.16)}.snooze-option{width:100%;height:31px;padding:0 8px;border:0;border-radius:5px;background:transparent;text-align:left;font-size:11px}.snooze-option:hover{background:#eef2f7}
+    @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @media(max-width:930px){.planner{grid-template-columns:240px minmax(0,1fr)}.form-grid{grid-template-columns:1fr}.preferences{grid-template-columns:1fr}.week-grid{grid-template-columns:repeat(7,130px)}.custom-options{grid-template-columns:repeat(3,1fr)}}
+  </style>
+</head>
+<body>
+  <section class="app-shell">
+    <header class="titlebar">
+      <div class="brand"><img src="../MyTodo.ico" alt=""><span>MyTodo 个人待办</span></div>
+      <div class="window-actions" aria-label="窗口控制">
+        <button class="window-button min" title="最小化" aria-label="最小化"></button>
+        <button class="window-button max" title="最大化" aria-label="最大化"></button>
+        <button class="window-button close" title="关闭" aria-label="关闭"></button>
+      </div>
+    </header>
+    <div class="workspace">
+      <nav class="sidebar" aria-label="主导航">
+        <div class="nav-group">
+          <button class="icon-button" title="待办" aria-label="待办"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9 20v-6h6v6"/></svg></button>
+          <button class="icon-button" title="日历" aria-label="日历"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></button>
+          <button class="icon-button active" title="提醒计划" aria-label="提醒计划"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></button>
+        </div>
+        <button class="icon-button" title="设置" aria-label="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg></button>
+      </nav>
+      <main class="main-window">
+        <header class="page-header">
+          <div class="page-heading"><h1>提醒计划</h1><p>2026年9月12日 - 9月18日</p></div>
+          <div class="header-actions">
+            <span class="running"><i class="running-dot"></i>后台提醒运行中</span>
+            <button class="button secondary" id="previewButton"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>预览提醒</button>
+          </div>
+        </header>
+        <div class="view-tabs" role="tablist">
+          <button class="view-tab active" data-view="plannerView" role="tab">任务提醒设置</button>
+          <button class="view-tab" data-view="weekView" role="tab">本周概览<span class="count">4</span></button>
+        </div>
+        <section class="planner" id="plannerView">
+          <aside class="task-pane">
+            <div class="pane-title"><strong>未来 7 天</strong><span>4 项截止</span></div>
+            <ul class="task-list" id="taskList"></ul>
+          </aside>
+          <section class="editor">
+            <div class="editor-scroll">
+              <div class="editor-title"><div><h2>编辑提醒</h2><p>修改任务后，提醒计划会立即重新计算</p></div><span class="mode-badge" id="modeBadge">高优先级</span></div>
+              <div class="form-grid">
+                <div class="field"><label for="taskTitle">任务标题</label><input class="input" id="taskTitle" value="提交 MyTodo v1 发布包"></div>
+                <div class="field"><label for="deadline">截止时间</label><input class="input" id="deadline" type="datetime-local" value="2026-09-18T18:00"></div>
+              </div>
+              <div class="field">
+                <span class="section-label">优先级</span>
+                <div class="segmented priority-segments" id="prioritySegments"><button class="segment" data-value="low">低</button><button class="segment" data-value="mid">中</button><button class="segment active" data-value="high">高</button></div>
+              </div>
+              <div class="field">
+                <span class="section-label">提醒模式</span>
+                <div class="segmented" id="modeSegments"><button class="segment active" data-value="auto">自动推荐</button><button class="segment" data-value="gentle">轻提醒</button><button class="segment" data-value="standard">标准</button><button class="segment" data-value="strong">强提醒</button><button class="segment" data-value="custom">自定义</button></div>
+              </div>
+              <div class="recommendation"><span id="recommendationText"><strong>已匹配强提醒</strong> · 高优先级任务将在进入 7 天范围后逐步加强提醒</span><span id="reminderCount">共 5 次</span></div>
+              <section class="schedule-panel">
+                <div class="schedule-head"><strong>实际提醒时间</strong><span>完成或归档任务后自动取消</span></div>
+                <ol class="timeline" id="timeline"></ol>
+              </section>
+              <div class="custom-options hidden" id="customOptions">
+                <label class="check-chip"><input type="checkbox" value="7d" checked>提前 7 天</label><label class="check-chip"><input type="checkbox" value="3d" checked>提前 3 天</label><label class="check-chip"><input type="checkbox" value="1d" checked>提前 1 天</label><label class="check-chip"><input type="checkbox" value="2h" checked>提前 2 小时</label><label class="check-chip"><input type="checkbox" value="0" checked>截止时</label>
+              </div>
+              <div class="preferences">
+                <div class="preference"><div class="preference-copy"><strong>加入每日摘要</strong><span>每天 09:00 汇总临近任务</span></div><label class="switch"><input type="checkbox" checked><span></span></label></div>
+                <div class="preference"><div class="preference-copy"><strong>遵循安静时段</strong><span>22:00 - 08:00 延后到次日</span></div><label class="switch"><input type="checkbox" checked><span></span></label></div>
+              </div>
+            </div>
+            <footer class="editor-footer"><span class="save-note" id="saveNote">提醒计划已根据截止时间生成</span><div class="footer-actions"><button class="button secondary">取消</button><button class="button primary" id="saveButton">保存提醒计划</button></div></footer>
+          </section>
+        </section>
+        <section class="week-view hidden" id="weekView">
+          <div class="week-summary"><div><h2>未来 7 天</h2><p>高优先级任务将进入增强提醒阶段</p></div><div class="summary-numbers"><div class="summary-number"><strong>4</strong><span>截止任务</span></div><div class="summary-number"><strong style="color:#dc2626">1</strong><span>高优先级</span></div><div class="summary-number"><strong style="color:#d97706">2</strong><span>中优先级</span></div></div></div>
+          <div class="week-grid">
+            <div class="day today"><div class="day-head"><span>周六</span><strong>12</strong></div></div>
+            <div class="day"><div class="day-head"><span>周日</span><strong>13</strong></div></div>
+            <div class="day"><div class="day-head"><span>周一</span><strong>14</strong></div></div>
+            <div class="day"><div class="day-head"><span>周二</span><strong>15</strong></div></div>
+            <div class="day"><div class="day-head"><span>周三</span><strong>16</strong></div><div class="week-task">整理发布说明与截图<time>20:00 · 中优先级</time></div></div>
+            <div class="day"><div class="day-head"><span>周四</span><strong>17</strong></div><div class="week-task low">清理临时测试数据<time>12:00 · 低优先级</time></div></div>
+            <div class="day"><div class="day-head"><span>周五</span><strong>18</strong></div><div class="week-task high">提交 MyTodo v1 发布包<time>18:00 · 高优先级</time></div><div class="week-task">复核安装包哈希<time>20:00 · 中优先级</time></div></div>
+          </div>
+          <section class="digest-band"><div><h3>每日任务摘要</h3><p>今天、明天以及三天内的高优先级任务将合并成一条提醒。</p></div><div class="digest-controls"><select class="mini-select"><option>每天 09:00</option><option>每天 08:00</option><option>每天 10:00</option></select><label class="switch"><input type="checkbox" checked><span></span></label></div></section>
+        </section>
+      </main>
+    </div>
+  </section>
+  <aside class="toast hidden" id="reminderToast" role="dialog" aria-label="提醒预览">
+    <header class="toast-header"><div class="toast-brand"><img src="../MyTodo.ico" alt=""><span>MyTodo</span></div><button class="toast-close" id="toastClose" title="关闭" aria-label="关闭"></button></header>
+    <div class="toast-content"><h3 id="toastTitle">提交 MyTodo v1 发布包</h3><p>上传安装包、核对哈希并完成 GitHub Release。</p><div class="toast-deadline"><span>截止时间</span><strong id="toastDeadline">2026年9月18日 周五 18:00</strong></div></div>
+    <footer class="toast-footer"><div class="snooze-wrap"><button class="button secondary" id="snoozeButton">稍后提醒⌄</button><div class="snooze-menu hidden" id="snoozeMenu"><button class="snooze-option">15 分钟后</button><button class="snooze-option">1 小时后</button><button class="snooze-option">明天上午</button></div></div><button class="button primary" id="completeButton">完成任务</button></footer>
+  </aside>
+  <script>
+    const tasks=[
+      {title:"提交 MyTodo v1 发布包",desc:"上传安装包、核对哈希并完成 GitHub Release。",deadline:"2026-09-18T18:00",priority:"high",due:"周五 18:00"},
+      {title:"整理发布说明与截图",desc:"补齐新版提醒窗口与设置页面截图。",deadline:"2026-09-16T20:00",priority:"mid",due:"周三 20:00"},
+      {title:"清理临时测试数据",desc:"确认测试目录不会进入最终安装包。",deadline:"2026-09-17T12:00",priority:"low",due:"周四 12:00"},
+      {title:"复核安装包哈希",desc:"比对 SHA256SUMS.txt 与发布产物。",deadline:"2026-09-18T20:00",priority:"mid",due:"周五 20:00"}
+    ]
+    const labels={low:"低优先级",mid:"中优先级",high:"高优先级"}
+    const modeLabels={gentle:"轻提醒",standard:"标准提醒",strong:"强提醒",custom:"自定义提醒"}
+    const plans={gentle:["1d","0"],standard:["3d","1d","0"],strong:["7d","3d","1d","2h","0"]}
+    const offsetLabels={"7d":"进入 7 天范围","3d":"提前 3 天","1d":"提前 1 天","2h":"提前 2 小时","0":"截止时间"}
+    let selectedTask=0,priority="high",mode="auto"
+    const $=selector=>document.querySelector(selector)
+    const $$=selector=>Array.from(document.querySelectorAll(selector))
+    function recommendedMode(){return priority==="high"?"strong":priority==="mid"?"standard":"gentle"}
+    function formatDate(date){return new Intl.DateTimeFormat("zh-CN",{month:"numeric",day:"numeric",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).format(date).replace("24:","00:")}
+    function reminderDate(deadline,offset){const date=new Date(deadline);if(offset==="7d")date.setDate(date.getDate()-7);if(offset==="3d")date.setDate(date.getDate()-3);if(offset==="1d")date.setDate(date.getDate()-1);if(offset==="2h")date.setHours(date.getHours()-2);return date}
+    function activePlan(){if(mode==="custom")return $$("#customOptions input:checked").map(input=>input.value);return plans[mode==="auto"?recommendedMode():mode]}
+    function updatePlan(){
+      const effective=mode==="auto"?recommendedMode():mode
+      const plan=activePlan()
+      $("#modeBadge").textContent=labels[priority]
+      $("#modeBadge").style.background=priority==="high"?"#fee2e2":priority==="mid"?"#fef3c7":"#d1fae5"
+      $("#modeBadge").style.color=priority==="high"?"#b91c1c":priority==="mid"?"#a16207":"#047857"
+      $("#recommendationText").innerHTML=mode==="auto"?`<strong>已匹配${modeLabels[effective]}</strong> · ${labels[priority]}任务将按截止距离逐步提醒`:`<strong>${modeLabels[effective]}</strong> · 当前任务已覆盖优先级的默认策略`
+      $("#reminderCount").textContent=`共 ${plan.length} 次`
+      $("#customOptions").classList.toggle("hidden",mode!=="custom")
+      const deadline=$("#deadline").value
+      $("#timeline").innerHTML=plan.map(offset=>`<li class="timeline-item"><time class="timeline-time">${formatDate(reminderDate(deadline,offset))}</time><i class="timeline-dot"></i><span>${offsetLabels[offset]}</span></li>`).join("")
+    }
+    function renderTasks(){
+      $("#taskList").innerHTML=tasks.map((task,index)=>`<li><button class="task-item ${index===selectedTask?"active":""}" data-index="${index}" data-priority="${task.priority}"><i class="priority-bar"></i><span class="task-copy"><strong>${task.title}</strong><span class="task-meta"><span>${labels[task.priority]}</span><time class="${task.priority==="high"?"urgent":""}">${task.due}</time></span></span></button></li>`).join("")
+      $$(".task-item").forEach(button=>button.onclick=()=>selectTask(Number(button.dataset.index)))
+    }
+    function selectTask(index){selectedTask=index;const task=tasks[index];priority=task.priority;mode="auto";$("#taskTitle").value=task.title;$("#deadline").value=task.deadline;$$("#prioritySegments .segment").forEach(button=>button.classList.toggle("active",button.dataset.value===priority));$$("#modeSegments .segment").forEach(button=>button.classList.toggle("active",button.dataset.value===mode));renderTasks();updatePlan()}
+    $$(".view-tab").forEach(tab=>tab.onclick=()=>{$$(".view-tab").forEach(item=>item.classList.remove("active"));tab.classList.add("active");["plannerView","weekView"].forEach(id=>$("#"+id).classList.toggle("hidden",id!==tab.dataset.view))})
+    $$("#prioritySegments .segment").forEach(button=>button.onclick=()=>{priority=button.dataset.value;$$("#prioritySegments .segment").forEach(item=>item.classList.toggle("active",item===button));updatePlan()})
+    $$("#modeSegments .segment").forEach(button=>button.onclick=()=>{mode=button.dataset.value;$$("#modeSegments .segment").forEach(item=>item.classList.toggle("active",item===button));updatePlan()})
+    $$("#customOptions input").forEach(input=>input.onchange=updatePlan)
+    $("#deadline").onchange=updatePlan
+    $("#previewButton").onclick=()=>{const task=tasks[selectedTask];$("#toastTitle").textContent=$("#taskTitle").value||task.title;$("#toastDeadline").textContent=formatDate(new Date($("#deadline").value));$("#reminderToast").classList.remove("hidden")}
+    $("#toastClose").onclick=()=>$("#reminderToast").classList.add("hidden")
+    $("#completeButton").onclick=()=>$("#reminderToast").classList.add("hidden")
+    $("#snoozeButton").onclick=()=>$("#snoozeMenu").classList.toggle("hidden")
+    $$(".snooze-option").forEach(option=>option.onclick=()=>{$("#saveNote").textContent=`已选择：${option.textContent}`;$("#snoozeMenu").classList.add("hidden");$("#reminderToast").classList.add("hidden")})
+    $("#saveButton").onclick=()=>{const button=$("#saveButton");button.textContent="已保存";$("#saveNote").textContent="提醒计划已更新";setTimeout(()=>button.textContent="保存提醒计划",1200)}
+    renderTasks();updatePlan()
+  </script>
+</body>
+</html>

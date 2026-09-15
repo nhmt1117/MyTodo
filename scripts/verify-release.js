@@ -12,6 +12,7 @@ const expectedFiles = [
   "main.js", "preload.js", "index.html", "float.html", "reminder.html", "wordlist.json",
   "MyTodo.ico", "README.md", "LICENSE",
   "CHANGELOG.md", "V1_RELEASE_CHECKLIST.md", "V1_RELEASE_TEST_REPORT.md",
+  "V2_RELEASE_CHECKLIST.md", "V2_RELEASE_TEST_REPORT.md",
 ];
 
 function addDirectory(directory) {
@@ -24,23 +25,82 @@ function addDirectory(directory) {
 
 addDirectory("src");
 addDirectory("renderer");
+addDirectory("assets");
 for (const file of expectedFiles) {
   assert.deepEqual(asar.extractFile(archive, path.normalize(file)), fs.readFileSync(path.join(root, file)),
     `Packaged file differs from source: ${file}`);
 }
 
 const allowed = new Set([...expectedFiles, "package.json"]);
+const packageLock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+const lockPackages = Object.entries(packageLock.packages || {});
+const dependencyNameFromPath = (packagePath) => {
+  const parts = packagePath.replace(/\\/g, "/").split("/");
+  const index = parts.lastIndexOf("node_modules");
+  if (index < 0 || !parts[index + 1]) return "";
+  return parts[index + 1].startsWith("@")
+    ? `${parts[index + 1]}/${parts[index + 2] || ""}`
+    : parts[index + 1];
+};
+const allowedDependencyNames = new Set(Object.keys(pkg.dependencies || {}));
+let dependencyCount = -1;
+while (dependencyCount !== allowedDependencyNames.size) {
+  dependencyCount = allowedDependencyNames.size;
+  for (const [packagePath, metadata] of lockPackages) {
+    if (metadata.dev === true || !allowedDependencyNames.has(dependencyNameFromPath(packagePath))) continue;
+    for (const name of Object.keys(metadata.dependencies || {})) allowedDependencyNames.add(name);
+  }
+}
+function packagedDependencyNames(file) {
+  const parts = file.split("/");
+  const names = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    if (parts[index] !== "node_modules" || !parts[index + 1]) continue;
+    if (parts[index + 1].startsWith("@") && parts[index + 2]) {
+      names.push(`${parts[index + 1]}/${parts[index + 2]}`);
+      index += 2;
+    } else {
+      names.push(parts[index + 1]);
+      index += 1;
+    }
+  }
+  return names;
+}
+let updaterRuntimeFound = false;
 for (const entry of asar.listPackage(archive)) {
   const file = entry.replace(/\\/g, "/").replace(/^\//, "");
   if (asar.statFile(archive, path.normalize(file)).files) continue;
+  if (file.startsWith("node_modules/")) {
+    const dependencyNames = packagedDependencyNames(file);
+    assert.ok(dependencyNames.length > 0, `Invalid packaged dependency path: ${file}`);
+    for (const name of dependencyNames) {
+      assert.ok(allowedDependencyNames.has(name), `Unexpected packaged dependency: ${file}`);
+    }
+    if (file.startsWith("node_modules/electron-updater/")) updaterRuntimeFound = true;
+    continue;
+  }
   assert.ok(allowed.has(file), `Unexpected packaged file: ${file}`);
 }
+assert.ok(updaterRuntimeFound, "electron-updater runtime is missing from app.asar");
 const packaged = JSON.parse(asar.extractFile(archive, "package.json"));
 for (const key of ["name", "version", "author", "license", "main"]) {
   assert.deepEqual(packaged[key], pkg[key], `Packaged metadata mismatch: ${key}`);
 }
 
-const artifacts = [`${pkg.build.productName} Setup ${pkg.version}.exe`];
+const installerName = `${pkg.build.productName}-Setup-${pkg.version}.exe`;
+const updateArtifacts = [installerName, `${installerName}.blockmap`, "latest.yml"];
+for (const file of updateArtifacts) {
+  assert.ok(fs.existsSync(path.join(output, file)), `Missing update artifact: ${file}`);
+}
+const updateInfo = fs.readFileSync(path.join(output, "latest.yml"), "utf8");
+assert.match(updateInfo, new RegExp(`version:\\s*${pkg.version.replace(/\./g, "\\.")}`));
+assert.ok(updateInfo.includes(installerName), "latest.yml does not reference the installer");
+assert.match(updateInfo, /sha512:\s*\S+/);
+const packagedUpdateConfig = fs.readFileSync(path.join(output, "win-unpacked", "resources", "app-update.yml"), "utf8");
+assert.match(packagedUpdateConfig, /provider:\s*generic/);
+assert.match(packagedUpdateConfig, /url:\s*https:\/\/github\.com\/nhmt1117\/MyTodo\/releases\/latest\/download/);
+
+const artifacts = [installerName];
 const checksums = artifacts.map((file) => {
   const content = fs.readFileSync(path.join(output, file));
   assert.ok(content.length > 1024 * 1024, `Installer is unexpectedly small: ${file}`);
