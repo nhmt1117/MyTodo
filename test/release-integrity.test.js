@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.0");
+  assert.equal(pkg.version, "2.0.1");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -106,13 +106,13 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(windows, /function createReminderWindow\(\)[\s\S]*?alwaysOnTop: true,[\s\S]*?skipTaskbar: true/);
   assert.match(windows, /soundEnabled: getGlobalConfig\(\)\.notificationSound !== false/);
   assert.match(windows, /autoplayPolicy: "no-user-gesture-required"/);
-  assert.match(windows, /\["dismiss", "open", "snooze", "complete"\]/);
+  assert.match(windows, /\["dismiss", "open", "snooze", "skip", "complete"\]/);
   assert.match(windows, /handledReminder\.kind === "summary"/);
   assert.match(ipc, /snoozeTodoReminder\(reminder\.id, reminder\.key, snoozeMinutes\)/);
   assert.match(ipc, /setArchived\(reminder\.id, true\)/);
   assert.match(preload, /onReminderDisplay:[\s\S]*?ipcRenderer\.on\("reminder-display"/);
   assert.match(preload, /onTodoDataChanged:[\s\S]*?ipcRenderer\.on\("todo-data-changed"/);
-  assert.match(reminderHtml, /data-minutes="15"[\s\S]*?data-minutes="60"[\s\S]*?data-minutes="tomorrow"/);
+  assert.match(reminderHtml, /data-minutes="15"[\s\S]*?data-minutes="60"[\s\S]*?data-minutes="tomorrow"[\s\S]*?data-action="skip"/);
   assert.match(reminderHtml, /id="primaryActionButton"/);
   assert.match(reminderHtml, /id="notificationSound" src="\.\/assets\/soft-bell-ding\.mp3"/);
   assert.ok(fs.statSync(path.join(root, "assets", "soft-bell-ding.mp3")).size > 0);
@@ -120,6 +120,7 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(reminderRenderer, /const AUTO_CLOSE_SECONDS = 5/);
   assert.match(reminderRenderer, /分钟后（" \+ autoCloseSeconds \+ " 秒）/);
   assert.match(reminderRenderer, /submitAction\("snooze", \{ minutes: DEFAULT_SNOOZE_MINUTES \}\)/);
+  assert.match(reminderRenderer, /submitAction\("skip"\)/);
   assert.match(reminderCss, /\.reminder-root\{[\s\S]*?background:#f8fafc;[\s\S]*?cursor:pointer}/);
   assert.doesNotMatch(reminderCss, /\.reminder-root\{[^}]*?(?:box-shadow|backdrop-filter):/);
   assert.match(reminderCss, /\.reminder-root\[data-kind="summary"\] #taskDescription\{[\s\S]*?white-space:pre-line/);
@@ -255,7 +256,7 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
   assert.match(installer, /继续前请先从托盘完全退出正在运行的 MyTodo/);
   assert.match(installer, /Function EnsureMyTodoInstallDirectory[\s\S]*?\$\{GetFileName\}[\s\S]*?\\\$\{APP_FILENAME\}/);
   assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?AutoStartPageCreate/);
-  assert.match(installer, /登录 Windows 后在后台启动 MyTodo/);
+  assert.match(installer, /开机自动启动 MyTodo/);
   assert.match(installer, /CurrentVersion\\Run[\s\S]*?--hidden/);
   assert.match(installer, /mytodo-install-options\.json/);
   assert.match(installer, /!macro customUnInstall[\s\S]*?DeleteRegValue/);
@@ -299,7 +300,11 @@ test("desktop release protects one local instance and exposes recovery tools", (
   const windows = read("src/main/windows.js");
   assert.match(main, /app\.requestSingleInstanceLock\(\)/);
   assert.match(main, /app\.on\("second-instance"[\s\S]*?showMainWindow\(\)/);
+  assert.match(main, /app\.on\("before-quit"[\s\S]*?destroyTray\(\)/);
   assert.match(main, /showStartupStorageNotice\(\)/);
+  assert.match(windows, /function destroyTray\(\)[\s\S]*?tray\.destroy\(\)/);
+  assert.match(windows, /function quitApplication\(\)[\s\S]*?destroyTray\(\)[\s\S]*?app\.quit\(\)/);
+  assert.match(windows, /tray\.on\("click"[\s\S]*?showMainWindow\(\)/);
   assert.match(windows, /trayNoticeShown[\s\S]*?tray\.displayBalloon/);
   assert.match(index, /id="openDataLocationBtn"/);
   assert.match(index, /id="exportDataBackupBtn"/);

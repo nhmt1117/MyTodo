@@ -8,6 +8,7 @@ test("a second application launch restores the existing main window", async () =
   const listeners = new Map();
   let showCount = 0;
   let installerConfig = null;
+  let destroyedTrayCount = 0;
   const app = {
     setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true,
@@ -41,6 +42,7 @@ test("a second application launch restores the existing main window", async () =
     "./src/main/windows": {
       createMainWindow: () => {},
       createTray: () => {},
+      destroyTray: () => { destroyedTrayCount += 1; },
       markQuitting: () => {},
       notifyUpdateStatus: () => {},
       prepareReminderWindow: async () => {},
@@ -62,6 +64,8 @@ test("a second application launch restores the existing main window", async () =
     assert.equal(typeof listeners.get("second-instance"), "function");
     listeners.get("second-instance")();
     assert.equal(showCount, 1);
+    listeners.get("before-quit")();
+    assert.equal(destroyedTrayCount, 1);
   } finally {
     Module._load = originalLoad;
     delete require.cache[mainPath];

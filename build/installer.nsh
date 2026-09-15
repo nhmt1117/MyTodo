@@ -40,7 +40,7 @@ Function AutoStartPageCreate
   Pop $0
   ${NSD_CreateLabel} 0 20u 100% 30u "$INSTDIR"
   Pop $0
-  ${NSD_CreateCheckbox} 0 60u 100% 18u "登录 Windows 后在后台启动 MyTodo"
+${NSD_CreateCheckbox} 0 60u 100% 18u "开机自动启动 MyTodo"
   Pop $AutoStartCheckbox
 
   ${If} $InstallerAutoStart == "1"

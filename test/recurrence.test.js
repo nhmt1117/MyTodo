@@ -100,6 +100,21 @@ test("one-time reminders support exact-time delivery and legacy sent keys", () =
   );
 });
 
+test("skipping one reminder milestone keeps the next scheduled milestone", () => {
+  const item = task({
+    dueTime: "12:00",
+    remindTime: "12:00",
+    priority: "high",
+  });
+  const earlyKey = "once:2026-09-03:12:00:120";
+  const due = getReminderCandidate(
+    { ...item, lastReminderKey: earlyKey, sentReminderKeys: [earlyKey] },
+    new Date(2026, 8, 3, 12, 0),
+  );
+  assert.equal(due.key, "once:2026-09-03:12:00:0");
+  assert.equal(due.reason, "截止时间");
+});
+
 test("upcoming reminder entries cover the next scan window without firing early", () => {
   const item = task({
     reminderMode: "custom",

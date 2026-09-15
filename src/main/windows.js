@@ -30,6 +30,19 @@ function markQuitting() {
   isQuitting = true;
 }
 
+function destroyTray() {
+  if (!tray) return false;
+  tray.destroy();
+  tray = null;
+  return true;
+}
+
+function quitApplication() {
+  markQuitting();
+  destroyTray();
+  app.quit();
+}
+
 function showMainWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -266,7 +279,7 @@ function handleReminderAction(sender, action, identity = {}, handlers = {}) {
   const matchesCurrent =
     Number(identity.id) === currentReminder.id &&
     String(identity.key || "") === currentReminder.key;
-  if (!matchesCurrent || !["dismiss", "open", "snooze", "complete"].includes(action)) {
+  if (!matchesCurrent || !["dismiss", "open", "snooze", "skip", "complete"].includes(action)) {
     return false;
   }
 
@@ -297,10 +310,7 @@ function createTray() {
     { label: " 打开主窗口 ", click: showMainWindow },
     {
       label: " 退出程序 ",
-      click: () => {
-        markQuitting();
-        app.quit();
-      },
+      click: quitApplication,
     },
   ]);
 
@@ -308,7 +318,8 @@ function createTray() {
   tray.setContextMenu(contextMenu);
   tray.on("click", () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+    if (mainWindow.isVisible()) hideMainWindow();
+    else showMainWindow();
   });
 
   return tray;
@@ -521,6 +532,7 @@ module.exports = {
   createFloatWindow,
   createMainWindow,
   createTray,
+  destroyTray,
   handleReminderAction,
   hideMainWindow,
   markQuitting,
@@ -529,6 +541,7 @@ module.exports = {
   notifyTodoDataChanged,
   notifyUpdateStatus,
   prepareReminderWindow,
+  quitApplication,
   saveFloatWindowBounds,
   showMainWindow,
   showReminder,

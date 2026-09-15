@@ -134,8 +134,13 @@ document.querySelector("#snoozeMenuButton").addEventListener("click", (event) =>
   if (!actionPending) setSnoozeMenu(snoozeMenu.hidden);
 });
 snoozeMenu.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-minutes]");
+  const button = event.target.closest("button");
   if (!button) return;
+  if (button.dataset.action === "skip") {
+    submitAction("skip");
+    return;
+  }
+  if (!button.dataset.minutes) return;
   const minutes = button.dataset.minutes === "tomorrow"
     ? getTomorrowMorningDelay()
     : Number(button.dataset.minutes);
