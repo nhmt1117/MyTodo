@@ -115,7 +115,6 @@ function registerIpcHandlers() {
   ipcMain.handle("get-storage-status", async () => supportTools.getStorageStatus());
   ipcMain.handle("check-for-updates", async () => updateManager.checkForUpdates({ manual: true }));
   ipcMain.handle("download-update", async () => updateManager.downloadUpdate());
-  ipcMain.handle("install-update", async () => updateManager.installUpdate());
   ipcMain.handle("get-data-location", async () => getDataLocation());
   ipcMain.handle("choose-data-location", chooseAndMigrateDataDirectory);
   ipcMain.handle("open-data-directory", supportTools.openDataDirectory);

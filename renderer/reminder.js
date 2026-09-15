@@ -20,6 +20,14 @@ let autoCloseSeconds = 0;
 
 const DEFAULT_SNOOZE_MINUTES = 15;
 const AUTO_CLOSE_SECONDS = 5;
+const ACTION_RESPONSE_TIMEOUT_MS = 2500;
+
+function isSameReminderDisplay(left, right) {
+  if (!left || !right) return false;
+  return Number(left.displayId) === Number(right.displayId) &&
+    Number(left.id) === Number(right.id) &&
+    String(left.key || "") === String(right.key || "");
+}
 
 function stopAutoCloseCountdown() {
   if (autoCloseTimer) clearInterval(autoCloseTimer);
@@ -87,10 +95,14 @@ function setSnoozeMenu(open) {
 function renderReminder(payload) {
   if (!payload || typeof payload !== "object") return;
   const kind = payload.kind === "summary" ? "summary" : "task";
-  const isNewReminder = !currentReminder ||
-    currentReminder.id !== Number(payload.id) ||
-    currentReminder.key !== String(payload.key || "");
-  currentReminder = { id: Number(payload.id), key: String(payload.key || ""), kind };
+  const nextReminder = {
+    id: Number(payload.id),
+    key: String(payload.key || ""),
+    kind,
+    displayId: Number(payload.displayId),
+  };
+  const isNewReminder = !isSameReminderDisplay(currentReminder, nextReminder);
+  currentReminder = nextReminder;
   root.dataset.priority = ["low", "mid", "high"].includes(payload.priority) ? payload.priority : "mid";
   root.dataset.kind = kind;
   reminderReason.textContent = String(payload.reason || (kind === "summary" ? "任务概览" : "待办提醒"));
@@ -118,12 +130,23 @@ async function submitAction(action, extra) {
   stopAutoCloseCountdown();
   setSnoozeMenu(false);
   setActionPending(true);
+  const handledDisplay = { ...currentReminder };
+  let responseTimer = null;
   try {
-    const identity = Object.assign({}, currentReminder, extra || {});
-    const accepted = await window.electronAPI.reminderAction(action, identity);
-    if (!accepted) setActionPending(false);
-  } catch (_error) {
+    const identity = Object.assign({}, handledDisplay, extra || {});
+    const response = await Promise.race([
+      window.electronAPI.reminderAction(action, identity).then((accepted) => ({ accepted })),
+      new Promise((resolve) => {
+        responseTimer = setTimeout(() => resolve({ timedOut: true }), ACTION_RESPONSE_TIMEOUT_MS);
+      }),
+    ]);
+    if (responseTimer) clearTimeout(responseTimer);
+    if (!isSameReminderDisplay(currentReminder, handledDisplay)) return;
+    if (response.accepted) currentReminder = null;
     setActionPending(false);
+  } catch (_error) {
+    if (responseTimer) clearTimeout(responseTimer);
+    if (isSameReminderDisplay(currentReminder, handledDisplay)) setActionPending(false);
   }
 }
 

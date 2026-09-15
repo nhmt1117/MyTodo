@@ -56,7 +56,7 @@ class FakeUpdater extends EventEmitter {
   }
 }
 
-test("Windows installer updates require confirmation through every stage", async () => {
+test("Windows installer updates download then start the direct upgrade flow", async () => {
   const updater = new FakeUpdater();
   const timerApi = createTimerApi();
   const notifications = [];
@@ -86,12 +86,11 @@ test("Windows installer updates require confirmation through every stage", async
   assert.equal(available.availableVersion, "2.0.1");
   assert.equal(available.manual, true);
 
-  const downloaded = await manager.downloadUpdate();
-  assert.equal(downloaded.phase, "downloaded");
-  assert.equal(downloaded.percent, 100);
+  const installing = await manager.downloadUpdate();
+  assert.equal(installing.phase, "installing");
+  assert.equal(installing.percent, 100);
   assert.ok(notifications.some((state) => state.phase === "downloading"));
-
-  assert.equal(manager.installUpdate(), true);
+  assert.ok(notifications.some((state) => state.phase === "installing"));
   timerApi.timeouts.at(-1).handler();
   assert.deepEqual(updater.installArguments, [false, true]);
   manager.stop();

@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.3");
+  assert.equal(pkg.version, "2.0.4");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -120,6 +120,9 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(windows, /function createReminderWindow\(\)[\s\S]*?alwaysOnTop: true,[\s\S]*?skipTaskbar: true/);
   assert.match(windows, /soundEnabled: getGlobalConfig\(\)\.notificationSound !== false/);
   assert.match(windows, /autoplayPolicy: "no-user-gesture-required"/);
+  assert.match(windows, /displayId: \+\+reminderDisplaySequence/);
+  assert.match(windows, /setIgnoreMouseEvents\(true\)[\s\S]*?targetWindow\.hide\(\)[\s\S]*?targetWindow\.isVisible\(\)[\s\S]*?targetWindow\.destroy\(\)/);
+  assert.match(windows, /if \(reminderQueue\.length\) showNextReminder\(\);[\s\S]*?else hideReminderWindow\(\)/);
   assert.match(windows, /\["dismiss", "open", "snooze", "skip", "complete"\]/);
   assert.match(windows, /handledReminder\.kind === "summary"/);
   assert.match(ipc, /snoozeTodoReminder\(reminder\.id, reminder\.key, snoozeMinutes\)/);
@@ -133,6 +136,10 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.ok(fs.statSync(path.join(root, "assets", "soft-bell-ding.mp3")).size > 0);
   assert.match(reminderRenderer, /function playNotificationSound\(payload\)[\s\S]*?notificationSound\.play\(\)/);
   assert.match(reminderRenderer, /const AUTO_CLOSE_SECONDS = 5/);
+  assert.match(reminderRenderer, /const ACTION_RESPONSE_TIMEOUT_MS = 2500/);
+  assert.match(reminderRenderer, /function isSameReminderDisplay\(left, right\)[\s\S]*?displayId/);
+  assert.match(reminderRenderer, /Promise\.race\([\s\S]*?ACTION_RESPONSE_TIMEOUT_MS/);
+  assert.match(reminderRenderer, /if \(response\.accepted\) currentReminder = null;[\s\S]*?setActionPending\(false\)/);
   assert.match(reminderRenderer, /分钟后（" \+ autoCloseSeconds \+ " 秒）/);
   assert.match(reminderRenderer, /submitAction\("snooze", \{ minutes: DEFAULT_SNOOZE_MINUTES \}\)/);
   assert.match(reminderRenderer, /submitAction\("skip"\)/);
@@ -215,7 +222,7 @@ test("overlays follow the application corners and detail labels align", () => {
   assert.match(styles, /\.task-row\.is-leaving\{[\s\S]*?max-height:0;[\s\S]*?translateX\(42px\)/);
 });
 
-test("Windows installer update flow uses GitHub release assets and explicit user confirmation", () => {
+test("Windows installer update flow uses GitHub release assets and direct upgrade installation", () => {
   const pkg = JSON.parse(read("package.json"));
   const main = read("main.js");
   const manager = read("src/main/updateManager.js");
@@ -232,20 +239,25 @@ test("Windows installer update flow uses GitHub release assets and explicit user
   assert.match(manager, /PORTABLE_EXECUTABLE_DIR/);
   assert.match(manager, /updater\.autoDownload = false/);
   assert.match(manager, /updater\.autoInstallOnAppQuit = false/);
+  assert.match(manager, /installAfterDownload = true[\s\S]*?updater\.downloadUpdate\(\)/);
+  assert.match(manager, /on\("update-downloaded"[\s\S]*?startDownloadedInstallation\(\)/);
+  assert.match(manager, /phase: "installing"/);
   assert.match(manager, /quitAndInstall\(false, true\)/);
   assert.match(ipc, /ipcMain\.handle\("check-for-updates"/);
   assert.match(ipc, /ipcMain\.handle\("download-update"/);
-  assert.match(ipc, /ipcMain\.handle\("install-update"/);
+  assert.doesNotMatch(ipc, /ipcMain\.handle\("install-update"/);
   assert.match(preload, /onUpdateStatus:[\s\S]*?ipcRenderer\.on\("update-status"/);
   assert.match(index, /id="autoCheckUpdatesCheck"/);
   assert.match(index, /id="updateProgress"/);
   assert.match(index, /id="updateActionButton"/);
   assert.match(renderer, /function renderUpdateState\(nextState, announce\)/);
   assert.match(renderer, /window\.electronAPI\.downloadUpdate\(\)/);
-  assert.match(renderer, /window\.electronAPI\.installUpdate\(\)/);
+  assert.match(renderer, /buttonText = "下载并安装 " \+ version/);
+  assert.doesNotMatch(renderer, /重启并安装/);
   assert.match(workflow, /runs-on: windows-latest/);
   assert.match(workflow, /tags:[\s\S]*?- "\*"/);
-  assert.match(workflow, /if \(\$version -ne "\$\{\{ github\.ref_name \}\}"\)/);
+  assert.match(workflow, /\$tagVersion = "\$\{\{ github\.ref_name \}\}" -replace '\^v', ''/);
+  assert.match(workflow, /if \(\$version -ne \$tagVersion\)/);
   assert.match(workflow, /\$asset = "dist\/MyTodo-Setup-\$version\.exe"/);
   assert.match(workflow, /\$assets = @\(\$asset, "\$asset\.blockmap", "dist\/latest\.yml"\)/);
   assert.match(workflow, /gh release upload \$tag \$assets --clobber/);
@@ -268,6 +280,7 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
   assert.match(installer, /!macro customInit[\s\S]*?ReadRegStr \$InstalledVersion[\s\S]*?\$\{VersionCompare\}/);
   assert.match(installer, /!macro customInit[\s\S]*?\$\{UAC_IsInnerInstance\}[\s\S]*?Return/);
   assert.match(installer, /Function AbortIfMyTodoRunning[\s\S]*?nsExec::Exec[\s\S]*?tasklist[\s\S]*?Quit/);
+  assert.match(installer, /Function AbortIfMyTodoRunning[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?Sleep 500[\s\S]*?mytodo_wait_for_update_exit/);
   assert.match(installer, /检测到应用正在运行，请先关闭/);
   assert.match(installer, /!macro customCheckAppRunning[\s\S]*?Call AbortIfMyTodoRunning/);
   assert.match(installer, /\$VersionComparison == "1"[\s\S]*?不允许降级安装/);
@@ -275,9 +288,10 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
   assert.match(installer, /即将升级到 MyTodo[\s\S]*?mytodo_upgrade_continue/);
   assert.match(installer, /Function EnsureMyTodoInstallDirectory[\s\S]*?\$\{GetFileName\}[\s\S]*?\\\$\{APP_FILENAME\}/);
   assert.match(installer, /Function BrowseInstallDirectory[\s\S]*?SelectFolderDialog[\s\S]*?EnsureMyTodoInstallDirectory[\s\S]*?NSD_SetText/);
-  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave/);
-  assert.doesNotMatch(installer, /!macro customPageAfterChangeDir[\s\S]*?skipPageIfUpdated/);
+  assert.match(installer, /!macro customInit[\s\S]*?\$\{If\} \$\{isUpdated\}[\s\S]*?StrCpy \$IsInAppUpdate "1"[\s\S]*?InstallLocation[\s\S]*?StrCpy \$INSTDIR[\s\S]*?Return/);
+  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?skipPageIfUpdated[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave/);
   assert.match(installer, /!macro customFinishPage[\s\S]*?MUI_FINISHPAGE_RUN_FUNCTION "StartApp"[\s\S]*?MUI_FINISHPAGE_SHOWREADME_TEXT "开机自动启动 MyTodo"/);
+  assert.match(installer, /Function FinishPageShow[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?ShowWindow \$mui\.FinishPage\.ShowReadme 0/);
   assert.doesNotMatch(installer, /AutoStartPageCreate/);
   assert.match(installer, /CurrentVersion\\Run[\s\S]*?--hidden/);
   assert.match(installer, /mytodo-install-options\.json/);

@@ -848,13 +848,14 @@ function renderUpdateState(nextState, announce) {
     disabled = true;
   } else if (phase === "available") {
     action = "download";
-    buttonText = "下载 " + version;
+    buttonText = "下载并安装 " + version;
   } else if (phase === "downloading") {
     buttonText = "正在下载";
     disabled = true;
-  } else if (phase === "downloaded") {
-    action = "install";
-    buttonText = "重启并安装";
+  } else if (phase === "downloaded" || phase === "installing") {
+    action = "installing";
+    buttonText = "正在启动安装";
+    disabled = true;
   } else if (phase === "error") {
     disabled = updateState.supported === false;
   }
@@ -862,7 +863,7 @@ function renderUpdateState(nextState, announce) {
   button.dataset.action = action;
   button.textContent = buttonText;
   button.disabled = disabled;
-  button.classList.toggle("primary", action === "download" || action === "install");
+  button.classList.toggle("primary", action === "download" || action === "installing");
   button.classList.toggle("secondary", action === "check");
   progress.classList.toggle("hidden", phase !== "downloading");
   progress.setAttribute("aria-valuenow", String(Math.round(percent)));
@@ -870,7 +871,7 @@ function renderUpdateState(nextState, announce) {
 
   if (announce && phase !== lastUpdatePhase) {
     if (phase === "available") showToast("发现 MyTodo " + version + "，可在设置中下载");
-    if (phase === "downloaded") showToast(version + " 已下载，可重启完成安装");
+    if (phase === "installing") showToast(version + " 已下载，正在启动安装程序");
     if (phase === "up-to-date" && updateState.manual) showToast("当前已是最新版本");
     if (phase === "error" && updateState.manual) showToast("检查更新失败，请稍后重试");
   }
@@ -882,11 +883,6 @@ async function handleUpdateAction() {
   const action = button.dataset.action || "check";
   button.disabled = true;
   try {
-    if (action === "install") {
-      const accepted = await window.electronAPI.installUpdate();
-      if (!accepted) showToast("更新尚未准备好，请重新检查");
-      return;
-    }
     const nextState = action === "download"
       ? await window.electronAPI.downloadUpdate()
       : await window.electronAPI.checkForUpdates();

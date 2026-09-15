@@ -38,7 +38,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getStorageStatus: () => ipcRenderer.invoke("get-storage-status"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   downloadUpdate: () => ipcRenderer.invoke("download-update"),
-  installUpdate: () => ipcRenderer.invoke("install-update"),
   onUpdateStatus: (callback) => {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, payload) => callback(payload);

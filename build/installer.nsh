@@ -8,14 +8,33 @@
 Var InstalledVersion
 Var VersionComparison
 Var DirectoryInput
+Var IsInAppUpdate
+!define MUI_FINISHPAGE_SHOWREADME_VARIABLES
+Var mui.FinishPage.ShowReadme
 
 Function AbortIfMyTodoRunning
-  nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_FILENAME}.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\\"${APP_FILENAME}.exe\\""`
-  Pop $0
+  ${If} $IsInAppUpdate == "1"
+    StrCpy $R0 0
+    mytodo_wait_for_update_exit:
+    nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_FILENAME}.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\\"${APP_FILENAME}.exe\\""`
+    Pop $0
+    ${If} $0 != 0
+      Goto mytodo_app_not_running
+    ${EndIf}
+    IntOp $R0 $R0 + 1
+    ${If} $R0 < 10
+      Sleep 500
+      Goto mytodo_wait_for_update_exit
+    ${EndIf}
+  ${Else}
+    nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_FILENAME}.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\\"${APP_FILENAME}.exe\\""`
+    Pop $0
+  ${EndIf}
   ${If} $0 == 0
     MessageBox MB_OK|MB_ICONEXCLAMATION|MB_TOPMOST "检测到应用正在运行，请先关闭"
     Quit
   ${EndIf}
+  mytodo_app_not_running:
 FunctionEnd
 
 !macro customCheckAppRunning
@@ -108,34 +127,48 @@ FunctionEnd
     Return
   ${EndIf}
 
-  Call AbortIfMyTodoRunning
+  ${If} ${isUpdated}
+    StrCpy $IsInAppUpdate "1"
+    ReadRegStr $0 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "InstallLocation"
+    ${If} $0 != ""
+      StrCpy $INSTDIR "$0"
+    ${EndIf}
+    Return
+  ${EndIf}
 
-  ${IfNot} ${isUpdated}
-    ReadRegStr $InstalledVersion SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
-    ${If} $InstalledVersion != ""
-      ${VersionCompare} "$InstalledVersion" "${VERSION}" $VersionComparison
+  StrCpy $IsInAppUpdate "0"
 
-      ${If} $VersionComparison == "1"
-        MessageBox MB_OK|MB_ICONSTOP|MB_TOPMOST "无法安装 MyTodo ${VERSION}。当前已安装版本：$InstalledVersion，安装包版本：${VERSION}。为避免数据和程序文件不兼容，MyTodo 不允许降级安装。" /SD IDOK
-        Quit
-      ${ElseIf} $VersionComparison == "0"
-        MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "当前已安装 MyTodo $InstalledVersion。是否重新安装相同版本 ${VERSION}？" /SD IDYES IDYES mytodo_same_version_continue
-        Quit
-        mytodo_same_version_continue:
-      ${Else}
-        MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "检测到已安装 MyTodo $InstalledVersion，即将升级到 MyTodo ${VERSION}。" /SD IDYES IDYES mytodo_upgrade_continue
-        Quit
-        mytodo_upgrade_continue:
-      ${EndIf}
+  ReadRegStr $InstalledVersion SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
+  ${If} $InstalledVersion != ""
+    ${VersionCompare} "$InstalledVersion" "${VERSION}" $VersionComparison
+
+    ${If} $VersionComparison == "1"
+      MessageBox MB_OK|MB_ICONSTOP|MB_TOPMOST "无法安装 MyTodo ${VERSION}。当前已安装版本：$InstalledVersion，安装包版本：${VERSION}。为避免数据和程序文件不兼容，MyTodo 不允许降级安装。" /SD IDOK
+      Quit
+    ${ElseIf} $VersionComparison == "0"
+      MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "当前已安装 MyTodo $InstalledVersion。是否重新安装相同版本 ${VERSION}？" /SD IDYES IDYES mytodo_same_version_continue
+      Quit
+      mytodo_same_version_continue:
+    ${Else}
+      MessageBox MB_YESNO|MB_ICONQUESTION|MB_TOPMOST "检测到已安装 MyTodo $InstalledVersion，即将升级到 MyTodo ${VERSION}。" /SD IDYES IDYES mytodo_upgrade_continue
+      Quit
+      mytodo_upgrade_continue:
     ${EndIf}
   ${EndIf}
 !macroend
 
 !macro customPageAfterChangeDir
+  !insertmacro skipPageIfUpdated
   PageEx custom
     PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave
   PageExEnd
 !macroend
+
+Function FinishPageShow
+  ${If} $IsInAppUpdate == "1"
+    ShowWindow $mui.FinishPage.ShowReadme 0
+  ${EndIf}
+FunctionEnd
 
 !macro customFinishPage
   !ifndef HIDE_RUN_AFTER_FINISH
@@ -146,6 +179,7 @@ FunctionEnd
   !define MUI_FINISHPAGE_SHOWREADME_TEXT "开机自动启动 MyTodo"
   !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
   !define MUI_FINISHPAGE_SHOWREADME_FUNCTION "EnableAutoStart"
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow
   !insertmacro MUI_PAGE_FINISH
 !macroend
 

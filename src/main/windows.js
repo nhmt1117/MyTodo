@@ -34,6 +34,8 @@ let reminderWindow = null;
 let reminderWindowReady = false;
 let reminderWindowReadyPromise = null;
 let currentReminder = null;
+let reminderDisplaySequence = 0;
+let reminderHideGuardTimer = null;
 let closePromptPending = false;
 let quitFallbackTimer = null;
 const reminderQueue = [];
@@ -63,6 +65,10 @@ function destroyManagedWindows() {
     clearTimeout(floatMoveSaveTimer);
     floatMoveSaveTimer = null;
   }
+  if (reminderHideGuardTimer) {
+    clearTimeout(reminderHideGuardTimer);
+    reminderHideGuardTimer = null;
+  }
 
   const managedWindows = [reminderWindow, floatWindow, mainWindow];
   for (const targetWindow of managedWindows) {
@@ -80,6 +86,7 @@ function destroyManagedWindows() {
   reminderWindowReady = false;
   reminderWindowReadyPromise = null;
   currentReminder = null;
+  reminderDisplaySequence = 0;
   reminderQueue.length = 0;
 }
 
@@ -249,7 +256,12 @@ function sendCurrentReminder() {
     return false;
   }
 
+  if (reminderHideGuardTimer) {
+    clearTimeout(reminderHideGuardTimer);
+    reminderHideGuardTimer = null;
+  }
   reminderWindow.setBounds(getReminderWindowBounds());
+  reminderWindow.setIgnoreMouseEvents(false);
   reminderWindow.webContents.send("reminder-display", {
     ...currentReminder,
     remainingCount: reminderQueue.length,
@@ -261,8 +273,38 @@ function sendCurrentReminder() {
 
 function showNextReminder() {
   if (currentReminder || reminderQueue.length === 0) return false;
-  currentReminder = reminderQueue.shift();
+  currentReminder = {
+    ...reminderQueue.shift(),
+    displayId: ++reminderDisplaySequence,
+  };
   return sendCurrentReminder();
+}
+
+function hideReminderWindow() {
+  if (!reminderWindow || reminderWindow.isDestroyed()) return false;
+
+  if (reminderHideGuardTimer) clearTimeout(reminderHideGuardTimer);
+  const targetWindow = reminderWindow;
+  targetWindow.setIgnoreMouseEvents(true);
+  targetWindow.hide();
+  reminderHideGuardTimer = setTimeout(() => {
+    reminderHideGuardTimer = null;
+    if (
+      targetWindow.isDestroyed() ||
+      reminderWindow !== targetWindow ||
+      currentReminder ||
+      reminderQueue.length ||
+      !targetWindow.isVisible()
+    ) {
+      return;
+    }
+
+    console.warn("提醒窗口隐藏失败，正在重建窗口");
+    targetWindow.destroy();
+    prepareReminderWindow();
+  }, 250);
+  reminderHideGuardTimer.unref?.();
+  return true;
 }
 
 function createReminderWindow() {
@@ -298,6 +340,7 @@ function createReminderWindow() {
 
   reminderWindow.setSkipTaskbar(true);
   reminderWindow.setAlwaysOnTop(true, "pop-up-menu");
+  reminderWindow.setIgnoreMouseEvents(true);
   const targetWindow = reminderWindow;
   reminderWindowReadyPromise = targetWindow
     .loadFile(path.join(APP_ROOT, "reminder.html"))
@@ -312,6 +355,10 @@ function createReminderWindow() {
       return false;
     });
   reminderWindow.on("closed", () => {
+    if (reminderHideGuardTimer) {
+      clearTimeout(reminderHideGuardTimer);
+      reminderHideGuardTimer = null;
+    }
     reminderWindow = null;
     reminderWindowReady = false;
     reminderWindowReadyPromise = null;
@@ -357,7 +404,8 @@ function handleReminderAction(sender, action, identity = {}, handlers = {}) {
 
   const matchesCurrent =
     Number(identity.id) === currentReminder.id &&
-    String(identity.key || "") === currentReminder.key;
+    String(identity.key || "") === currentReminder.key &&
+    Number(identity.displayId) === currentReminder.displayId;
   if (!matchesCurrent || !["dismiss", "open", "snooze", "skip", "complete"].includes(action)) {
     return false;
   }
@@ -374,13 +422,13 @@ function handleReminderAction(sender, action, identity = {}, handlers = {}) {
     }
   }
 
-  reminderWindow.hide();
   currentReminder = null;
   if (action === "open") {
     if (handledReminder.kind === "summary" || handledReminder.developmentTest) showMainWindow();
     else showTodoDetailInMainWindow(handledReminder.id);
   }
-  showNextReminder();
+  if (reminderQueue.length) showNextReminder();
+  else hideReminderWindow();
   return true;
 }
 function createTray() {

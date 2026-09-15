@@ -55,9 +55,11 @@ function createUpdateManager(options = {}) {
   let started = false;
   let startupTimer = null;
   let intervalTimer = null;
+  let installTimer = null;
   let notifyStatus = () => {};
   let boundListeners = [];
   let currentCheckIsManual = false;
+  let installAfterDownload = false;
   let state = {
     phase: "idle",
     supported: false,
@@ -99,6 +101,32 @@ function createUpdateManager(options = {}) {
     if (intervalTimer) timerApi.clearInterval(intervalTimer);
     startupTimer = null;
     intervalTimer = null;
+  }
+
+  function clearInstallTimer() {
+    if (installTimer) timerApi.clearTimeout(installTimer);
+    installTimer = null;
+  }
+
+  function startDownloadedInstallation() {
+    if (!updater || state.phase !== "downloaded") return false;
+    clearInstallTimer();
+    emitState({
+      phase: "installing",
+      percent: 100,
+      bytesPerSecond: 0,
+      errorMessage: "",
+    });
+    installTimer = timerApi.setTimeout(() => {
+      installTimer = null;
+      try {
+        updater.quitAndInstall(false, true);
+      } catch (error) {
+        emitState({ phase: "error", errorMessage: friendlyError(error) });
+      }
+    }, 80);
+    installTimer?.unref?.();
+    return true;
   }
 
   function scheduleAutomaticChecks() {
@@ -165,11 +193,17 @@ function createUpdateManager(options = {}) {
         bytesPerSecond: 0,
         errorMessage: "",
       });
+      if (installAfterDownload) {
+        installAfterDownload = false;
+        startDownloadedInstallation();
+      }
     });
     on("update-cancelled", () => {
+      installAfterDownload = false;
       emitState({ phase: "available", percent: 0, bytesPerSecond: 0 });
     });
     on("error", (error) => {
+      installAfterDownload = false;
       emitState({
         phase: "error",
         errorMessage: friendlyError(error),
@@ -226,7 +260,7 @@ function createUpdateManager(options = {}) {
 
   async function checkForUpdates(checkOptions = {}) {
     if (!state.supported || !updater) return cloneState();
-    if (["checking", "downloading", "downloaded"].includes(state.phase)) return cloneState();
+    if (["checking", "downloading", "downloaded", "installing"].includes(state.phase)) return cloneState();
 
     currentCheckIsManual = checkOptions.manual !== false;
     emitState({
@@ -251,6 +285,7 @@ function createUpdateManager(options = {}) {
 
   async function downloadUpdate() {
     if (!updater || state.phase !== "available") return cloneState();
+    installAfterDownload = true;
     emitState({
       phase: "downloading",
       percent: 0,
@@ -262,17 +297,12 @@ function createUpdateManager(options = {}) {
     try {
       await updater.downloadUpdate();
     } catch (error) {
+      installAfterDownload = false;
       if (state.phase !== "error") {
         emitState({ phase: "error", errorMessage: friendlyError(error) });
       }
     }
     return cloneState();
-  }
-
-  function installUpdate() {
-    if (!updater || state.phase !== "downloaded") return false;
-    timerApi.setTimeout(() => updater.quitAndInstall(false, true), 80);
-    return true;
   }
 
   function setAutoCheckEnabled(enabled) {
@@ -283,6 +313,8 @@ function createUpdateManager(options = {}) {
 
   function stop() {
     clearSchedule();
+    clearInstallTimer();
+    installAfterDownload = false;
     if (updater) {
       for (const [eventName, handler] of boundListeners) {
         updater.removeListener(eventName, handler);
@@ -297,7 +329,6 @@ function createUpdateManager(options = {}) {
     checkForUpdates,
     downloadUpdate,
     getState: cloneState,
-    installUpdate,
     setAutoCheckEnabled,
     start,
     stop,
@@ -322,7 +353,6 @@ module.exports = {
   createUpdateManager,
   downloadUpdate: () => getDefaultManager().downloadUpdate(),
   getUpdateState: () => getDefaultManager().getState(),
-  installUpdate: () => getDefaultManager().installUpdate(),
   setAutoCheckEnabled: (enabled) => getDefaultManager().setAutoCheckEnabled(enabled),
   startUpdateManager: (options) => getDefaultManager().start(options),
   stopUpdateManager: () => getDefaultManager().stop(),

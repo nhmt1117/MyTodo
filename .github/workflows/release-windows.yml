@@ -25,7 +25,8 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          if ($version -ne "${{ github.ref_name }}") {
+          $tagVersion = "${{ github.ref_name }}" -replace '^v', ''
+          if ($version -ne $tagVersion) {
             throw "Tag ${{ github.ref_name }} does not match package version $version"
           }
 
@@ -53,19 +54,20 @@ jobs:
           $notes = @"
           ## MyTodo $version
 
-          ### 本次修复
-          - 修复 Windows 任务栏图标显示不正确的问题。
-          - 安装器发现 MyTodo 正在运行时，会提示先从右下角托盘退出，并直接结束安装。
-          - 修复应用内检查更新无法获取新版本的问题。
+          ### 提醒稳定性
+          - 修复多条提醒连续出现时，提醒按钮可能一直不可用、提醒窗无法自动关闭的问题。
+          - 修复延后提醒再次出现时可能沿用上一次窗口状态的问题。
+          - 提醒操作响应异常时会自动恢复按钮；最后一条提醒处理完毕后会确认窗口已经隐藏。
 
           ### 应用内更新
-          - 在“设置 → 关于”可手动检查更新；应用启动后也会定时检查。
-          - 发现新版本后，由你决定是否下载；下载完成后点击“重启并安装”即可升级。
+          - 发现新版本后，点击“下载并安装”即可完成后续升级流程。
+          - 下载完成后 MyTodo 会自动关闭，并直接启动精简的原地升级安装器。
+          - 原地升级沿用现有安装目录，不再重复询问版本、安装位置和开机启动选项。
           - Release 中的 `latest.yml` 和 `.blockmap` 仅供应用自动更新使用，手动安装只需下载 `.exe`。
 
           ### 安装与兼容
           - 下载 `MyTodo-Setup-$version.exe` 后按向导安装即可。
-          - 升级会保留现有任务与设置；安装器会提示先关闭正在运行的 MyTodo。
+          - 升级会保留现有任务与设置；从外部手动运行安装包时，请先退出正在运行的 MyTodo。
 
           ### 已知提示
           - 安装包暂未进行代码签名，Windows 可能显示“未知发布者”提示。
