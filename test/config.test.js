@@ -43,6 +43,7 @@ test("global reminder settings normalize and persist", (t) => {
   assert.equal(defaults.dailySummary, true);
   assert.equal(defaults.weeklySummary, true);
   assert.equal(defaults.notificationSound, true);
+  assert.equal(defaults.reminderPosition, "bottom-right");
   assert.equal(defaults.quietHoursEnabled, false);
   assert.equal(defaults.dailySummaryTime, "09:00");
   assert.equal(defaults.trayNoticeShown, false);
@@ -54,6 +55,7 @@ test("global reminder settings normalize and persist", (t) => {
     height: 300,
     autoStart: true,
     notificationSound: false,
+    reminderPosition: "top-center",
     dailySummaryTime: "25:00",
     quietStart: "21:30",
     quietEnd: "07:45",
@@ -65,6 +67,7 @@ test("global reminder settings normalize and persist", (t) => {
   assert.equal(updated.height, 680);
   assert.equal(updated.dailySummaryTime, "09:00");
   assert.equal(updated.notificationSound, false);
+  assert.equal(updated.reminderPosition, "top-center");
   assert.equal(updated.quietStart, "21:30");
   assert.equal(updated.quietEnd, "07:45");
   assert.deepEqual(loaded.loginSettings.at(-1), {
@@ -81,6 +84,7 @@ test("global reminder settings normalize and persist", (t) => {
   const persisted = loaded.config.loadGlobalConfig();
   assert.equal(persisted.autoStart, true);
   assert.equal(persisted.notificationSound, false);
+  assert.equal(persisted.reminderPosition, "top-center");
   assert.equal(persisted.lastDailySummaryDate, "2026-09-13");
   assert.equal(persisted.lastWeeklySummaryKey, "2026-09-07");
   assert.equal(persisted.quietStart, "21:30");

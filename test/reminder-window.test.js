@@ -37,7 +37,10 @@ function loadWindows(options = {}) {
 
     isDestroyed() { return this.destroyed; }
     isVisible() { return this.visible; }
-    setBounds() {}
+    setBounds(bounds) {
+      this.bounds = { ...bounds };
+      this.boundsHistory = [...(this.boundsHistory || []), { ...bounds }];
+    }
     setSkipTaskbar() {}
     setAlwaysOnTop() {}
     setIgnoreMouseEvents(value) { this.ignoreMouseEvents.push(value); }
@@ -68,7 +71,10 @@ function loadWindows(options = {}) {
     },
   };
   const config = {
-    getGlobalConfig: () => ({ notificationSound: false }),
+    getGlobalConfig: () => ({
+      notificationSound: false,
+      reminderPosition: options.reminderPosition || "bottom-right",
+    }),
     normalizeFloatBounds: () => null,
     setFloatBounds: () => {},
     setGlobalConfig: () => ({}),
@@ -99,6 +105,24 @@ function reminder(overrides = {}) {
     ...overrides,
   };
 }
+
+test("reminder placement follows the saved position and refreshes immediately", async () => {
+  const { windows: bottomWindows, createdWindows: bottomWindowsList } = loadWindows();
+  await bottomWindows.prepareReminderWindow();
+  bottomWindows.showReminder(reminder());
+  assert.deepEqual(bottomWindowsList[0].bounds, { x: 1504, y: 798, width: 410, height: 276 });
+
+  const { windows: topWindows, createdWindows: topWindowsList } = loadWindows({
+    reminderPosition: "top-center",
+  });
+  await topWindows.prepareReminderWindow();
+  topWindows.showReminder(reminder());
+  assert.deepEqual(topWindowsList[0].bounds, { x: 640, y: 6, width: 640, height: 190 });
+  assert.equal(topWindowsList[0].webContents.messages.at(-1).payload.reminderPosition, "top-center");
+
+  assert.equal(topWindows.refreshReminderWindowPlacement(), true);
+  assert.equal(topWindowsList[0].boundsHistory.length, 2);
+});
 
 test("a repeated reminder key receives a new display identity", async () => {
   const { windows, createdWindows } = loadWindows();

@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.5");
+  assert.equal(pkg.version, "2.0.6");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -117,8 +117,9 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(scheduler, /const PRECISION_INTERVAL_MS = 1000/);
   assert.match(scheduler, /function queueUpcomingReminders\([\s\S]*?getUpcomingReminderEntries/);
   assert.match(main, /await prepareReminderWindow\(\);[\s\S]*?startReminderScheduler\(\{ showReminder \}\)/);
-  assert.match(windows, /function createReminderWindow\(\)[\s\S]*?alwaysOnTop: true,[\s\S]*?skipTaskbar: true/);
-  assert.match(windows, /soundEnabled: getGlobalConfig\(\)\.notificationSound !== false/);
+  assert.match(windows, /function createReminderWindow\(\)[\s\S]*?alwaysOnTop: true,[\s\S]*?skipTaskbar: true,[\s\S]*?hasShadow: true/);
+  assert.match(windows, /const config = getGlobalConfig\(\);[\s\S]*?soundEnabled: config\.notificationSound !== false/);
+  assert.match(windows, /"top-center": \{ width: 640, height: 190 \}/);
   assert.match(windows, /autoplayPolicy: "no-user-gesture-required"/);
   assert.match(windows, /displayId: \+\+reminderDisplaySequence/);
   assert.match(windows, /setIgnoreMouseEvents\(true\)[\s\S]*?targetWindow\.hide\(\)[\s\S]*?targetWindow\.isVisible\(\)[\s\S]*?targetWindow\.destroy\(\)/);
@@ -135,7 +136,7 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(reminderHtml, /id="notificationSound" src="\.\/assets\/soft-bell-ding\.mp3"/);
   assert.ok(fs.statSync(path.join(root, "assets", "soft-bell-ding.mp3")).size > 0);
   assert.match(reminderRenderer, /function playNotificationSound\(payload\)[\s\S]*?notificationSound\.play\(\)/);
-  assert.match(reminderRenderer, /const AUTO_CLOSE_SECONDS = 5/);
+  assert.match(reminderRenderer, /const AUTO_CLOSE_SECONDS = 15/);
   assert.match(reminderRenderer, /const ACTION_RESPONSE_TIMEOUT_MS = 2500/);
   assert.match(reminderRenderer, /function isSameReminderDisplay\(left, right\)[\s\S]*?displayId/);
   assert.match(reminderRenderer, /Promise\.race\([\s\S]*?ACTION_RESPONSE_TIMEOUT_MS/);
@@ -143,9 +144,11 @@ test("custom reminder window supports variable snooze, completion and summaries"
   assert.match(reminderRenderer, /分钟后（" \+ autoCloseSeconds \+ " 秒）/);
   assert.match(reminderRenderer, /submitAction\("snooze", \{ minutes: DEFAULT_SNOOZE_MINUTES \}\)/);
   assert.match(reminderRenderer, /submitAction\("skip"\)/);
-  assert.match(reminderCss, /\.reminder-root\{[\s\S]*?background:rgba\(244,247,250,\.9\);[\s\S]*?box-shadow:0 10px 28px rgba\(54,65,80,\.15\),0 2px 8px rgba\(54,65,80,\.08\);[\s\S]*?backdrop-filter:blur\(14px\);/);
+  assert.match(reminderCss, /body\{padding:0;[\s\S]*?background:#f4f7fa;/);
+  assert.doesNotMatch(reminderCss, /\.reminder-root\{[^}]*box-shadow:/);
+  assert.match(reminderCss, /\.reminder-root\[data-placement="top-center"\] \.reminder-content\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) auto/);
   assert.match(reminderCss, /\.reminder-root\[data-kind="summary"\] #taskDescription\{[\s\S]*?white-space:pre-line/);
-  assert.match(reminderCss, /\.snooze-menu\{[\s\S]*?background:rgba\(248,250,252,\.82\);[\s\S]*?backdrop-filter:blur\(14px\) saturate\(120%\);/);
+  assert.match(reminderCss, /\.snooze-menu\{[\s\S]*?background:#f8fafc;/);
   assert.match(reminderRenderer, /kind === "summary" \? "open" : "complete"/);
   assert.match(reminderRenderer, /root\.addEventListener\("click"[\s\S]*?submitAction\("open"\)/);
 });

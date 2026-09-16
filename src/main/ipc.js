@@ -90,6 +90,9 @@ function registerIpcHandlers() {
     if (cfg && Object.prototype.hasOwnProperty.call(cfg, "autoCheckUpdates")) {
       updateManager.setAutoCheckEnabled(config.autoCheckUpdates);
     }
+    if (cfg && Object.prototype.hasOwnProperty.call(cfg, "reminderPosition")) {
+      windows.refreshReminderWindowPlacement();
+    }
     return config;
   });
   ipcMain.handle("get-update-state", async () => updateManager.getUpdateState());

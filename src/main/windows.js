@@ -22,8 +22,11 @@ const APP_TASKBAR_ICON_PATH = app.isPackaged && process.resourcesPath
   : APP_ICON_PATH;
 const APP_USER_MODEL_ID = "com.nhmt.mytodo";
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
-const REMINDER_WIN_SIZE = { width: 410, height: 276 };
-const REMINDER_MARGIN = 18;
+const REMINDER_WIN_SIZES = {
+  "bottom-right": { width: 410, height: 276 },
+  "top-center": { width: 640, height: 190 },
+};
+const REMINDER_MARGIN = 6;
 
 let mainWindow = null;
 let floatWindow = null;
@@ -241,12 +244,46 @@ function getReminderWindowBounds() {
       ? screen.getDisplayMatching(mainWindow.getBounds())
       : screen.getPrimaryDisplay();
   const { x, y, width, height } = display.workArea;
+  const position = getGlobalConfig().reminderPosition === "top-center" ? "top-center" : "bottom-right";
+  const preferredSize = REMINDER_WIN_SIZES[position];
+  const reminderWidth = Math.min(preferredSize.width, Math.max(320, width - REMINDER_MARGIN * 2));
+  const reminderHeight = Math.min(preferredSize.height, Math.max(160, height - REMINDER_MARGIN * 2));
+  if (position === "top-center") {
+    return {
+      x: x + Math.round((width - reminderWidth) / 2),
+      y: y + REMINDER_MARGIN,
+      width: reminderWidth,
+      height: reminderHeight,
+    };
+  }
+
   return {
-    x: x + width - REMINDER_WIN_SIZE.width - REMINDER_MARGIN,
-    y: y + height - REMINDER_WIN_SIZE.height - REMINDER_MARGIN,
-    width: REMINDER_WIN_SIZE.width,
-    height: REMINDER_WIN_SIZE.height,
+    x: x + width - reminderWidth - REMINDER_MARGIN,
+    y: y + height - reminderHeight - REMINDER_MARGIN,
+    width: reminderWidth,
+    height: reminderHeight,
   };
+}
+
+function sendReminderContent() {
+  if (!currentReminder || !reminderWindowReady || !reminderWindow || reminderWindow.isDestroyed()) {
+    return false;
+  }
+  const config = getGlobalConfig();
+  reminderWindow.webContents.send("reminder-display", {
+    ...currentReminder,
+    remainingCount: reminderQueue.length,
+    soundEnabled: config.notificationSound !== false,
+    reminderPosition: config.reminderPosition === "top-center" ? "top-center" : "bottom-right",
+  });
+  return true;
+}
+
+function refreshReminderWindowPlacement(options = {}) {
+  if (!reminderWindow || reminderWindow.isDestroyed()) return false;
+  reminderWindow.setBounds(getReminderWindowBounds());
+  if (options.notifyRenderer !== false) sendReminderContent();
+  return true;
 }
 
 function sendCurrentReminder() {
@@ -263,13 +300,9 @@ function sendCurrentReminder() {
     clearTimeout(reminderHideGuardTimer);
     reminderHideGuardTimer = null;
   }
-  reminderWindow.setBounds(getReminderWindowBounds());
+  refreshReminderWindowPlacement({ notifyRenderer: false });
   reminderWindow.setIgnoreMouseEvents(false);
-  reminderWindow.webContents.send("reminder-display", {
-    ...currentReminder,
-    remainingCount: reminderQueue.length,
-    soundEnabled: getGlobalConfig().notificationSound !== false,
-  });
+  sendReminderContent();
   reminderWindow.showInactive();
   return true;
 }
@@ -317,7 +350,7 @@ function createReminderWindow() {
   reminderWindow = new BrowserWindow({
     title: "MyTodo 提醒",
     icon: APP_ICON_PATH,
-    ...REMINDER_WIN_SIZE,
+    ...REMINDER_WIN_SIZES["bottom-right"],
     show: false,
     frame: false,
     transparent: true,
@@ -672,6 +705,7 @@ module.exports = {
   prepareReminderWindow,
   quitApplication,
   requestCloseMainWindow,
+  refreshReminderWindowPlacement,
   resolveCloseMainWindow,
   saveFloatWindowBounds,
   showMainWindow,

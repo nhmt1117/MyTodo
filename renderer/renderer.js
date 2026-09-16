@@ -786,12 +786,40 @@ async function saveConfigPatch(patch) {
   }
 }
 
+function ensureReminderPositionSetting() {
+  if ($("#reminderPositionSelector")) return;
+
+  const notificationRow = $("#notificationSoundCheck")?.closest(".setting-row");
+  if (!notificationRow || !notificationRow.parentElement) return;
+
+  const row = document.createElement("div");
+  row.className = "setting-row";
+  row.innerHTML = `
+    <div class="setting-copy">
+      <strong>提醒弹窗位置</strong>
+      <span>选择提醒显示在右下角或顶部居中</span>
+    </div>
+    <div class="segmented reminder-position-selector" id="reminderPositionSelector" role="group" aria-label="提醒弹窗位置">
+      <button type="button" class="segment" data-value="bottom-right" aria-pressed="false">右下角</button>
+      <button type="button" class="segment" data-value="top-center" aria-pressed="false">顶部居中</button>
+    </div>
+  `;
+  notificationRow.parentElement.insertBefore(row, notificationRow);
+}
+
 function applyConfigToSettings() {
+  ensureReminderPositionSetting();
   $("#weekStartSel").value = String(appConfig.weekStartMon !== false);
   $("#autoStartCheck").checked = !!appConfig.autoStart;
   $("#closeToTrayPromptCheck").checked = appConfig.closeToTrayPrompt !== false;
   $("#autoCheckUpdatesCheck").checked = appConfig.autoCheckUpdates !== false;
   $("#notificationSoundCheck").checked = appConfig.notificationSound !== false;
+  const reminderPosition = appConfig.reminderPosition === "top-center" ? "top-center" : "bottom-right";
+  $$("#reminderPositionSelector .segment").forEach((button) => {
+    const active = button.dataset.value === reminderPosition;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
   $("#weeklySummaryCheck").checked = appConfig.weeklySummary !== false;
   $("#dailySummaryCheck").checked = appConfig.dailySummary !== false;
   $("#dailySummaryTime").value = appConfig.dailySummaryTime || "09:00";
@@ -1107,6 +1135,13 @@ function bindCalendar() {
 }
 
 function bindSettings() {
+  ensureReminderPositionSetting();
+  $$("#reminderPositionSelector .segment").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await saveConfigPatch({ reminderPosition: button.dataset.value });
+      applyConfigToSettings();
+    });
+  });
   $("#autoStartCheck").addEventListener("change", (event) => saveConfigPatch({ autoStart: event.target.checked }));
   $("#closeToTrayPromptCheck").addEventListener("change", (event) => {
     saveConfigPatch({ closeToTrayPrompt: event.target.checked });

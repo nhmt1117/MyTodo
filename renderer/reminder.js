@@ -19,7 +19,7 @@ let autoCloseTimer = null;
 let autoCloseSeconds = 0;
 
 const DEFAULT_SNOOZE_MINUTES = 15;
-const AUTO_CLOSE_SECONDS = 5;
+const AUTO_CLOSE_SECONDS = 15;
 const ACTION_RESPONSE_TIMEOUT_MS = 2500;
 
 function isSameReminderDisplay(left, right) {
@@ -105,6 +105,7 @@ function renderReminder(payload) {
   currentReminder = nextReminder;
   root.dataset.priority = ["low", "mid", "high"].includes(payload.priority) ? payload.priority : "mid";
   root.dataset.kind = kind;
+  root.dataset.placement = payload.reminderPosition === "top-center" ? "top-center" : "bottom-right";
   reminderReason.textContent = String(payload.reason || (kind === "summary" ? "任务概览" : "待办提醒"));
   taskTitle.textContent = String(payload.body || "待办提醒");
   taskDescription.textContent = String(payload.description || "").trim() || (kind === "summary" ? "暂无摘要内容" : "无备注");
