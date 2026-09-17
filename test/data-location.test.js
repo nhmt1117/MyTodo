@@ -78,6 +78,10 @@ test("data location migration moves tasks, settings and backups", (t) => {
     "todo-store.json.bak": '{"list":[]}',
     "win-config.json": '{"width":620}',
     "win-config.json.bak": '{"width":600}',
+    "sync-outbox.json": '{"schemaVersion":1,"items":[]}',
+    "sync-outbox.json.bak": '{"schemaVersion":1,"items":[]}',
+    "sync-account.json": '{"schemaVersion":1,"enabled":true,"refreshTokenEncrypted":"cipher"}',
+    "sync-account.json.bak": '{"schemaVersion":1,"enabled":false}',
   };
   for (const [fileName, content] of Object.entries(files)) {
     fs.writeFileSync(path.join(sourceDirectory, fileName), content, "utf8");

@@ -8,6 +8,10 @@ const DATA_FILES = [
   "todo-store.json.bak",
   "win-config.json",
   "win-config.json.bak",
+  "sync-outbox.json",
+  "sync-outbox.json.bak",
+  "sync-account.json",
+  "sync-account.json.bak",
 ];
 const LOCATION_FILE_NAME = "MyTodo-data-location.json";
 const DEFAULT_DATA_DIRECTORY_NAME = "MyTodoData";

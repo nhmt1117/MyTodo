@@ -17,6 +17,16 @@ test("data export contains normalized state and original recovery files", (t) =>
   fs.mkdirSync(dataDirectory, { recursive: true });
   fs.writeFileSync(path.join(dataDirectory, "todo-store.json"), "{\"list\":[]}", "utf8");
   fs.writeFileSync(path.join(dataDirectory, "todo-store.json.bak"), "{\"list\":[1]}", "utf8");
+  fs.writeFileSync(
+    path.join(dataDirectory, "sync-outbox.json"),
+    "{\"schemaVersion\":1,\"items\":[]}",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(dataDirectory, "sync-account.json"),
+    "{\"refreshTokenEncrypted\":\"must-not-export\"}",
+    "utf8",
+  );
 
   const result = createDataBackup({
     destinationPath,
@@ -27,12 +37,14 @@ test("data export contains normalized state and original recovery files", (t) =>
   });
   const backup = JSON.parse(fs.readFileSync(destinationPath, "utf8"));
 
-  assert.equal(result.fileCount, 2);
+  assert.equal(result.fileCount, 3);
   assert.equal(backup.format, BACKUP_FORMAT);
   assert.equal(backup.formatVersion, BACKUP_FORMAT_VERSION);
   assert.equal(backup.appVersion, "2.0.0");
+  assert.equal(backup.data.todoStore.schemaVersion, 3);
   assert.equal(backup.data.todoStore.maxId, 5);
   assert.deepEqual(backup.data.todoStore.list, [{ id: 4, text: "Backup task" }]);
   assert.deepEqual(backup.data.config, { autoStart: true });
   assert.equal(backup.originalFiles["todo-store.json"], "{\"list\":[]}");
+  assert.equal(backup.originalFiles["sync-account.json"], undefined);
 });

@@ -18,6 +18,7 @@ let detailItem = null;
 let deleteTargetId = null;
 let refreshPending = false;
 let updateState = null;
+let syncState = null;
 let lastUpdatePhase = "";
 let backTopTarget = null;
 
@@ -856,6 +857,122 @@ function renderStorageStatus(status) {
   target.dataset.tone = status.state || "error";
 }
 
+function formatSyncTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderSyncState(nextState, announce) {
+  if (!nextState || typeof nextState !== "object") return;
+  const previousPhase = syncState?.phase;
+  syncState = { ...nextState };
+  const account = syncState.account || {};
+  const enabled = account.enabled === true;
+  const phase = syncState.phase || (enabled ? "idle" : "disabled");
+  const title = $("#syncStatusTitle");
+  const detail = $("#syncStatusDetail");
+  const dot = $("#syncStateDot");
+  const enableButton = $("#enableSyncButton");
+  const syncButton = $("#syncNowButton");
+  const serverInput = $("#syncServerUrl");
+  const actionsRow = $("#syncActionsRow");
+  const labels = {
+    disabled: "尚未启用",
+    connecting: "正在启用同步",
+    syncing: "正在同步",
+    idle: "同步正常",
+    offline: "等待网络恢复",
+    attention: "有待处理项目",
+  };
+
+  title.textContent = labels[phase] || "同步状态未知";
+  dot.dataset.state = phase;
+  if (account.serverUrl) serverInput.value = account.serverUrl;
+  serverInput.disabled = enabled || phase === "connecting";
+  enableButton.classList.toggle("hidden", enabled);
+  actionsRow.classList.toggle("hidden", !enabled);
+  enableButton.disabled = phase === "connecting";
+  syncButton.disabled = phase === "syncing" || phase === "connecting";
+
+  if (!enabled) {
+    detail.textContent = "本机有 " + (Number(syncState.localTodoCount) || 0) +
+      " 项待办，确认前不会上传";
+  } else if (phase === "syncing" || phase === "connecting") {
+    detail.textContent = syncState.message || "正在连接同步服务";
+  } else if (phase === "offline") {
+    detail.textContent = syncState.lastError
+      ? syncState.message + "：" + syncState.lastError
+      : syncState.message;
+  } else if (phase === "attention") {
+    detail.textContent = (Number(syncState.conflictCount) || 0) + " 项冲突，" +
+      (Number(syncState.rejectedCount) || 0) + " 项未被服务接受";
+  } else {
+    const lastSync = formatSyncTime(syncState.lastSyncAt);
+    detail.textContent = (Number(syncState.pendingCount) || 0) + " 项等待同步" +
+      (lastSync ? " · 上次同步 " + lastSync : "");
+  }
+  if (enabled) {
+    $("#syncAccountDetail").textContent = (account.deviceName || "当前电脑") +
+      " · 凭据已由 Windows 安全存储保护";
+  }
+  if (announce && previousPhase && previousPhase !== phase) {
+    if (phase === "idle" && syncState.manual) showToast("同步已完成");
+    if (phase === "offline" && syncState.manual) showToast("同步服务暂时不可用，本地待办已保留");
+    if (phase === "attention") showToast("部分待办需要处理同步冲突");
+  }
+}
+
+function closeSyncEnableModal() {
+  $("#syncEnableModal").classList.add("hidden");
+}
+
+function openSyncEnableModal() {
+  const count = Number(syncState?.localTodoCount) || todoList.length;
+  $("#syncEnableSummary").textContent = count
+    ? "确认后会将本机现有的 " + count + " 项待办上传到同步服务。"
+    : "确认后会创建同步账户，今后新增的待办将自动同步。";
+  $("#syncEnableModal").classList.remove("hidden");
+}
+
+async function confirmEnableSync() {
+  const button = $("#confirmEnableSync");
+  button.disabled = true;
+  try {
+    const result = await window.electronAPI.enableSync({
+      serverUrl: $("#syncServerUrl").value,
+      confirmExistingUpload: true,
+    });
+    closeSyncEnableModal();
+    renderSyncState(result, false);
+    if (result.recoveryKey) {
+      $("#recoveryKeyValue").textContent = result.recoveryKey;
+      $("#recoveryKeyModal").classList.remove("hidden");
+    }
+  } catch (error) {
+    showToast("启用同步失败：" + (error.message || "请检查同步服务"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runManualSync() {
+  const button = $("#syncNowButton");
+  button.disabled = true;
+  try {
+    renderSyncState(await window.electronAPI.syncNow(), true);
+  } catch (error) {
+    showToast("同步失败：" + (error.message || "请稍后重试"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function formatUpdateRate(bytesPerSecond) {
   const value = Number(bytesPerSecond) || 0;
   if (value <= 0) return "";
@@ -1153,6 +1270,23 @@ function bindSettings() {
   if (typeof window.electronAPI.onUpdateStatus === "function") {
     window.electronAPI.onUpdateStatus((state) => renderUpdateState(state, true));
   }
+  if (typeof window.electronAPI.onSyncStatus === "function") {
+    window.electronAPI.onSyncStatus((state) => renderSyncState(state, true));
+  }
+  $("#enableSyncButton").addEventListener("click", openSyncEnableModal);
+  $("#cancelEnableSync").addEventListener("click", closeSyncEnableModal);
+  $("#confirmEnableSync").addEventListener("click", confirmEnableSync);
+  $("#syncNowButton").addEventListener("click", runManualSync);
+  $("#syncEnableModal").addEventListener("mousedown", (event) => {
+    if (event.target === $("#syncEnableModal")) closeSyncEnableModal();
+  });
+  $("#copyRecoveryKey").addEventListener("click", () => {
+    window.electronAPI.copyText($("#recoveryKeyValue").textContent);
+    showToast("恢复密钥已复制");
+  });
+  $("#closeRecoveryKey").addEventListener("click", () => {
+    $("#recoveryKeyModal").classList.add("hidden");
+  });
   $("#notificationSoundCheck").addEventListener("change", (event) => {
     saveConfigPatch({ notificationSound: event.target.checked });
   });
@@ -1192,7 +1326,10 @@ function bindWindowEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (!$("#closeAppModal").classList.contains("hidden")) cancelCloseAppModal();
+      if (!$("#recoveryKeyModal").classList.contains("hidden")) {
+        $("#recoveryKeyModal").classList.add("hidden");
+      } else if (!$("#syncEnableModal").classList.contains("hidden")) closeSyncEnableModal();
+      else if (!$("#closeAppModal").classList.contains("hidden")) cancelCloseAppModal();
       else window.electronAPI.winClose();
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
@@ -1234,12 +1371,14 @@ async function initApp() {
     dataLocation,
     initialUpdateState,
     storageStatus,
+    initialSyncState,
   ] = await Promise.all([
     window.electronAPI.getAppInfo(),
     window.electronAPI.getFloatConfig(),
     window.electronAPI.getDataLocation(),
     window.electronAPI.getUpdateState(),
     window.electronAPI.getStorageStatus(),
+    window.electronAPI.getSyncState(),
   ]);
   $("#appVersion").textContent = "v" + appInfo.version;
   $("#triggerTestReminderButton").classList.toggle("hidden", !!appInfo.isPackaged);
@@ -1247,6 +1386,7 @@ async function initApp() {
   applyConfigToSettings();
   renderDataLocation(dataLocation);
   renderStorageStatus(storageStatus);
+  renderSyncState(initialSyncState, false);
   renderUpdateState(initialUpdateState, false);
   await refreshTodoData();
   setPage("home");

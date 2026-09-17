@@ -4,6 +4,9 @@ const { getDataLocation, migrateDataDirectory } = require("./dataLocation");
 const { getReminderServiceStatus } = require("./reminderScheduler");
 const { formatLocalDate } = require("../shared/recurrence");
 const supportTools = require("./supportTools");
+const syncAccount = require("./syncAccount");
+const syncManager = require("./syncManager");
+const syncOutbox = require("./syncOutbox");
 const todoStore = require("./todoStore");
 const updateManager = require("./updateManager");
 const windows = require("./windows");
@@ -37,6 +40,8 @@ async function chooseAndMigrateDataDirectory() {
   // Persist the current in-memory state before copying its files to the new directory.
   setGlobalConfig({}, { applyAutoStart: false });
   todoStore.saveTodoFile();
+  syncOutbox.saveSyncOutbox();
+  syncAccount.saveSyncAccount();
   return { cancelled: false, ...migrateDataDirectory(targetDirectory) };
 }
 
@@ -116,6 +121,9 @@ function registerIpcHandlers() {
     });
   });
   ipcMain.handle("get-storage-status", async () => supportTools.getStorageStatus());
+  ipcMain.handle("get-sync-state", async () => syncManager.getSyncState());
+  ipcMain.handle("enable-sync", async (_event, options) => syncManager.enableSync(options));
+  ipcMain.handle("sync-now", async () => syncManager.syncNow({ manual: true }));
   ipcMain.handle("check-for-updates", async () => updateManager.checkForUpdates({ manual: true }));
   ipcMain.handle("download-update", async () => updateManager.downloadUpdate());
   ipcMain.handle("get-data-location", async () => getDataLocation());

@@ -9,12 +9,16 @@ const {
 } = require("./dataLocation");
 const { getLogDirectory } = require("./logger");
 const todoStore = require("./todoStore");
+const { getSyncAccountStatus } = require("./syncAccount");
+const { getSyncOutboxStatus } = require("./syncOutbox");
 
 function getStorageStatus() {
   const components = {
     location: getDataLocationStatus(),
     config: getConfigStatus(),
     todos: todoStore.getTodoStorageStatus(),
+    syncAccount: getSyncAccountStatus(),
+    syncOutbox: getSyncOutboxStatus(),
   };
   const values = Object.values(components);
   const state = values.some((entry) => entry.state === "error")

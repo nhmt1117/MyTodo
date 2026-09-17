@@ -1,6 +1,6 @@
 {
   "name": "mytodo",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "MyTodo 个人待办与循环提醒工具",
   "main": "main.js",
   "author": "nhmt",
@@ -18,7 +18,7 @@
     "build:linux": "electron-builder --linux",
     "pack": "electron-builder --dir",
     "test": "node --test",
-    "check": "node --check main.js && node --check preload.js && node --check src/main/backup.js && node --check src/main/config.js && node --check src/main/dataLocation.js && node --check src/main/installOptions.js && node --check src/main/logger.js && node --check src/main/storage.js && node --check src/main/supportTools.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/updateManager.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && node --check renderer/reminder.js && npm test"
+    "check": "node --check main.js && node --check preload.js && node --check src/main/backup.js && node --check src/main/config.js && node --check src/main/dataLocation.js && node --check src/main/installOptions.js && node --check src/main/logger.js && node --check src/main/storage.js && node --check src/main/supportTools.js && node --check src/main/syncAccount.js && node --check src/main/syncManager.js && node --check src/main/syncOutbox.js && node --check src/main/todoStore.js && node --check src/main/reminderScheduler.js && node --check src/main/updateManager.js && node --check src/main/windows.js && node --check src/main/ipc.js && node --check src/shared/recurrence.js && node --check renderer/renderer.js && node --check renderer/float.js && node --check renderer/reminder.js && npm test"
   },
   "build": {
     "appId": "com.nhmt.mytodo",

@@ -629,6 +629,16 @@ button{outline:none}
 .data-location{min-width:0;flex:1;justify-content:flex-end}
 .path-input{width:min(390px,45vw);height:32px;padding:0 9px;font-size:11px}
 .support-actions{flex-wrap:wrap;justify-content:flex-end}
+.sync-server-control{min-width:0;flex:1;justify-content:flex-end}
+.sync-server-input{width:min(360px,42vw)}
+.sync-state-dot{width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:#aab3bd;box-shadow:0 0 0 4px rgba(170,179,189,.16)}
+.sync-state-dot[data-state="idle"]{background:#1d9a72;box-shadow:0 0 0 4px rgba(29,154,114,.14)}
+.sync-state-dot[data-state="syncing"],.sync-state-dot[data-state="connecting"]{background:#4f46e5;box-shadow:0 0 0 4px rgba(79,70,229,.14)}
+.sync-state-dot[data-state="offline"],.sync-state-dot[data-state="attention"]{background:#c58118;box-shadow:0 0 0 4px rgba(197,129,24,.14)}
+.modal-note{color:#6f7b89;font-size:11px;line-height:1.6}
+.recovery-key-modal{width:min(560px,calc(100vw - 48px))}
+.recovery-key-modal>p{padding:0 20px;color:#697585;font-size:11px;line-height:1.55}
+.recovery-key-value{margin:4px 20px 18px;padding:12px;border:1px solid rgba(79,70,229,.2);border-radius:6px;color:#312e81;background:rgba(238,238,255,.72);font:600 12px/1.6 Consolas,monospace;overflow-wrap:anywhere;user-select:all}
 .about-logo{display:flex;align-items:center;gap:10px}
 .about-logo img{width:36px;height:36px}
 .about-logo div{display:flex;flex-direction:column;gap:3px}

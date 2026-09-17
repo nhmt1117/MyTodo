@@ -8,12 +8,17 @@ const {
   startReminderScheduler,
   stopReminderScheduler,
 } = require("./src/main/reminderScheduler");
-const { loadTodoFile } = require("./src/main/todoStore");
+const todoStore = require("./src/main/todoStore");
+const { loadSyncAccount } = require("./src/main/syncAccount");
+const syncManager = require("./src/main/syncManager");
+const { loadSyncOutbox } = require("./src/main/syncOutbox");
 const { startUpdateManager, stopUpdateManager } = require("./src/main/updateManager");
 const { showStartupStorageNotice } = require("./src/main/supportTools");
 const {
   createMainWindow,
   createTray,
+  notifySyncStatus,
+  notifyTodoDataChanged,
   notifyUpdateStatus,
   prepareForApplicationQuit,
   prepareReminderWindow,
@@ -39,13 +44,20 @@ if (!hasSingleInstanceLock) {
     const installerOptions = consumeInstallerOptions();
     if (installerOptions) config = setGlobalConfig(installerOptions);
     else applyAutoStartSetting();
-    loadTodoFile();
+    todoStore.loadTodoFile();
+    loadSyncOutbox();
+    loadSyncAccount();
+    todoStore.setTodoMutationListener(syncManager.captureTodoMutation);
     registerIpcHandlers();
     createMainWindow({ showOnReady: !process.argv.includes("--hidden") });
     createTray();
     startUpdateManager({
       autoCheckEnabled: config.autoCheckUpdates,
       notifyStatus: notifyUpdateStatus,
+    });
+    syncManager.startSyncManager({
+      notifyStatus: notifySyncStatus,
+      notifyTodoDataChanged,
     });
     await showStartupStorageNotice();
     await prepareReminderWindow();
@@ -58,6 +70,7 @@ if (!hasSingleInstanceLock) {
 
   app.on("before-quit", () => {
     stopReminderScheduler();
+    syncManager.stopSyncManager();
     stopUpdateManager();
     prepareForApplicationQuit();
   });

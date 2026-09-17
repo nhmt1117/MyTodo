@@ -8,6 +8,8 @@ const DATA_FILE_NAMES = [
   "todo-store.json.bak",
   "win-config.json",
   "win-config.json.bak",
+  "sync-outbox.json",
+  "sync-outbox.json.bak",
 ];
 
 function readExistingFiles(directory) {
@@ -44,7 +46,7 @@ function createDataBackup(options = {}) {
     exportedAt: new Date().toISOString(),
     data: {
       todoStore: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         list: todos,
         maxId: getNextId(todos),
       },

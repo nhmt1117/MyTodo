@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { clipboard, contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   winMinimize: () => ipcRenderer.send("win-minimize"),
@@ -36,6 +36,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getReminderServiceStatus: () => ipcRenderer.invoke("get-reminder-service-status"),
   triggerDevelopmentReminder: () => ipcRenderer.invoke("trigger-development-reminder"),
   getStorageStatus: () => ipcRenderer.invoke("get-storage-status"),
+  getSyncState: () => ipcRenderer.invoke("get-sync-state"),
+  enableSync: (options) => ipcRenderer.invoke("enable-sync", options),
+  syncNow: () => ipcRenderer.invoke("sync-now"),
+  copyText: (value) => clipboard.writeText(String(value || "")),
+  onSyncStatus: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("sync-status", listener);
+    return () => ipcRenderer.removeListener("sync-status", listener);
+  },
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   downloadUpdate: () => ipcRenderer.invoke("download-update"),
   onUpdateStatus: (callback) => {

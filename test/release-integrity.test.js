@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.6");
+  assert.equal(pkg.version, "2.0.7");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -296,9 +296,15 @@ test("Windows installer confirms reinstall and upgrade, blocks downgrade, and sy
   assert.match(installer, /Function BrowseInstallDirectory[\s\S]*?SelectFolderDialog[\s\S]*?EnsureMyTodoInstallDirectory[\s\S]*?NSD_SetText/);
   assert.match(installer, /!macro customInit[\s\S]*?\$\{If\} \$\{isUpdated\}[\s\S]*?StrCpy \$IsInAppUpdate "1"[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?InstallLocation[\s\S]*?StrCpy \$INSTDIR[\s\S]*?Return/);
   assert.match(installer, /Function InstallDirectoryPageCreate[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?Abort[\s\S]*?nsDialogs::Create/);
-  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave/);
+  assert.match(installer, /!macro customInstallMode[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?\$hasPerMachineInstallation[\s\S]*?\$isForceMachineInstall[\s\S]*?\$isForceCurrentInstall/);
+  assert.match(installer, /!macro customPageAfterChangeDir[\s\S]*?PageCallbacks InstallDirectoryPageCreate InstallDirectoryPageLeave[\s\S]*?MUI_PAGE_CUSTOMFUNCTION_SHOW InstallProgressPageShow[\s\S]*?MUI_PAGE_CUSTOMFUNCTION_LEAVE InstallProgressPageLeave/);
+  assert.match(installer, /Function PrepareUpdateWindow[\s\S]*?GetWindowRect[\s\S]*?SetWindowPos[\s\S]*?UpdateWindowPrepared "1"/);
+  assert.match(installer, /Function InstallProgressPageShow[\s\S]*?Call PrepareUpdateWindow[\s\S]*?Call HideUpdateInstallerChrome[\s\S]*?PBM_SETBARCOLOR[\s\S]*?正在安装更新[\s\S]*?MyTodo \$\{VERSION\}[\s\S]*?UpdateProgressTick/);
+  assert.match(installer, /Function UpdateProgressTick[\s\S]*?PBM_GETPOS[\s\S]*?UpdateProgressPercent "\$0%"[\s\S]*?替换程序文件/);
+  assert.match(installer, /Function InstallProgressPageLeave[\s\S]*?NSD_KillTimer[\s\S]*?NSD_FreeIcon/);
   assert.match(installer, /!macro customFinishPage[\s\S]*?MUI_FINISHPAGE_RUN_FUNCTION "StartApp"[\s\S]*?MUI_FINISHPAGE_SHOWREADME_TEXT "开机自动启动 MyTodo"/);
-  assert.match(installer, /Function FinishPageShow[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?ShowWindow \$mui\.FinishPage\.ShowReadme 0/);
+  assert.match(installer, /Function FinishPageShow[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?Call HideUpdateInstallerChrome[\s\S]*?ShowWindow \$mui\.FinishPage\.ShowReadme 0[\s\S]*?BM_SETCHECK[\s\S]*?ShowWindow \$mui\.FinishPage\.Run 0[\s\S]*?更新完成[\s\S]*?点击完成启动 MyTodo[\s\S]*?FinishUpdateClick/);
+  assert.match(installer, /Function StartApp[\s\S]*?\$IsInAppUpdate == "1"[\s\S]*?--updated[\s\S]*?ExecShell "open" "\$INSTDIR\\\$\{APP_FILENAME\}\.exe" "\$1"/);
   assert.doesNotMatch(installer, /AutoStartPageCreate/);
   assert.match(installer, /CurrentVersion\\Run[\s\S]*?--hidden/);
   assert.match(installer, /mytodo-install-options\.json/);

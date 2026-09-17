@@ -194,6 +194,12 @@ function notifyUpdateStatus(status) {
   return true;
 }
 
+function notifySyncStatus(status) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.webContents.send("sync-status", status);
+  return true;
+}
+
 function minimizeMainWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
 }
@@ -700,6 +706,7 @@ module.exports = {
   minimizeMainWindow,
   moveFloatWindow,
   notifyTodoDataChanged,
+  notifySyncStatus,
   notifyUpdateStatus,
   prepareForApplicationQuit,
   prepareReminderWindow,

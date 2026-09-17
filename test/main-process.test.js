@@ -9,6 +9,7 @@ test("a second application launch restores the existing main window", async () =
   let showCount = 0;
   let installerConfig = null;
   let preparedQuitCount = 0;
+  let stoppedSyncCount = 0;
   const app = {
     setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true,
@@ -33,7 +34,17 @@ test("a second application launch restores the existing main window", async () =
       startReminderScheduler: () => {},
       stopReminderScheduler: () => {},
     },
-    "./src/main/todoStore": { loadTodoFile: () => {} },
+    "./src/main/todoStore": {
+      loadTodoFile: () => {},
+      setTodoMutationListener: () => {},
+    },
+    "./src/main/syncAccount": { loadSyncAccount: () => {} },
+    "./src/main/syncManager": {
+      captureTodoMutation: () => {},
+      startSyncManager: () => {},
+      stopSyncManager: () => { stoppedSyncCount += 1; },
+    },
+    "./src/main/syncOutbox": { loadSyncOutbox: () => {} },
     "./src/main/updateManager": {
       startUpdateManager: () => {},
       stopUpdateManager: () => {},
@@ -43,6 +54,8 @@ test("a second application launch restores the existing main window", async () =
       createMainWindow: () => {},
       createTray: () => {},
       notifyUpdateStatus: () => {},
+      notifySyncStatus: () => {},
+      notifyTodoDataChanged: () => {},
       prepareForApplicationQuit: () => { preparedQuitCount += 1; },
       prepareReminderWindow: async () => {},
       showMainWindow: () => { showCount += 1; },
@@ -65,6 +78,7 @@ test("a second application launch restores the existing main window", async () =
     assert.equal(showCount, 1);
     listeners.get("before-quit")();
     assert.equal(preparedQuitCount, 1);
+    assert.equal(stoppedSyncCount, 1);
   } finally {
     Module._load = originalLoad;
     delete require.cache[mainPath];

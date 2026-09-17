@@ -81,12 +81,17 @@ test("legacy cycles receive a stable start date and reminder time", (t) => {
   }));
   let store = loadStore(directory);
   const original = store.loadTodoFile()[0];
+  assert.match(original.uuid, /^[0-9a-f-]{36}$/);
+  assert.equal(original.cloudRevision, 0);
+  assert.equal(original.syncState, "local");
   assert.match(original.date, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(original.remindTime, "09:00");
   assert.equal(original.snoozedReminderKey, "");
   assert.equal(original.snoozedUntil, "");
   store = loadStore(directory);
-  assert.equal(store.loadTodoFile()[0].date, original.date);
+  const reloaded = store.loadTodoFile()[0];
+  assert.equal(reloaded.date, original.date);
+  assert.equal(reloaded.uuid, original.uuid);
   assert.equal(store.addTodoItem({ text: "Next" }).id, 8);
 });
 
@@ -113,7 +118,38 @@ test("snooze supports a next-morning delay up to 48 hours", (t) => {
   assert.equal(snoozed.snoozedUntil, "2026-09-14T09:00:00.000Z");
   assert.equal(store.snoozeTodoReminder(item.id, key, 48 * 60 + 1), undefined);
   const persisted = JSON.parse(fs.readFileSync(path.join(directory, "todo-store.json"), "utf8"));
-  assert.equal(persisted.schemaVersion, 2);
+  assert.equal(persisted.schemaVersion, 3);
+});
+
+test("synced deletions keep a hidden tombstone for cloud propagation", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-tombstone-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const uuid = "8ec41df8-89f7-4df3-8e3d-0badc30cfe72";
+  fs.writeFileSync(path.join(directory, "todo-store.json"), JSON.stringify({
+    schemaVersion: 3,
+    list: [{
+      id: 1,
+      uuid,
+      text: "Synced task",
+      cloudRevision: 4,
+      syncState: "synced",
+    }],
+    maxId: 2,
+  }));
+
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  assert.equal(store.deleteTodo(1), true);
+  assert.deepEqual(store.getTodoList(), []);
+  const tombstone = store.getTodoSyncSnapshot()[0];
+  assert.equal(tombstone.uuid, uuid);
+  assert.equal(tombstone.cloudRevision, 4);
+  assert.equal(tombstone.syncState, "pending");
+  assert.match(tombstone.deletedAt, /^\d{4}-\d{2}-\d{2}T/);
+
+  const persisted = JSON.parse(fs.readFileSync(path.join(directory, "todo-store.json"), "utf8"));
+  assert.equal(persisted.list.length, 1);
+  assert.equal(persisted.list[0].deletedAt, tombstone.deletedAt);
 });
 
 test("unreadable task data enters read-only protection without overwriting files", (t) => {
