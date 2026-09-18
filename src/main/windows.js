@@ -41,6 +41,10 @@ let reminderDisplaySequence = 0;
 let reminderHideGuardTimer = null;
 let closePromptPending = false;
 let quitFallbackTimer = null;
+let mainUnresponsiveTimer = null;
+let reminderUnresponsiveTimer = null;
+let mainWindowRecovering = false;
+let reminderWindowRecovering = false;
 const reminderQueue = [];
 
 function markQuitting() {
@@ -74,6 +78,12 @@ function destroyManagedWindows() {
     clearTimeout(reminderHideGuardTimer);
     reminderHideGuardTimer = null;
   }
+  if (mainUnresponsiveTimer) clearTimeout(mainUnresponsiveTimer);
+  if (reminderUnresponsiveTimer) clearTimeout(reminderUnresponsiveTimer);
+  mainUnresponsiveTimer = null;
+  reminderUnresponsiveTimer = null;
+  mainWindowRecovering = false;
+  reminderWindowRecovering = false;
 
   const managedWindows = [reminderWindow, floatWindow, mainWindow];
   for (const targetWindow of managedWindows) {
@@ -264,7 +274,6 @@ function getReminderWindowBounds() {
       height: reminderHeight,
     };
   }
-
   return {
     x: x + width - reminderWidth - REMINDER_MARGIN,
     y: y + height - reminderHeight - REMINDER_MARGIN,
@@ -291,6 +300,39 @@ function refreshReminderWindowPlacement(options = {}) {
   if (!reminderWindow || reminderWindow.isDestroyed()) return false;
   reminderWindow.setBounds(getReminderWindowBounds());
   if (options.notifyRenderer !== false) sendReminderContent();
+  return true;
+}
+
+function recoverReminderRenderer(targetWindow, reason) {
+  if (
+    isQuitting ||
+    reminderWindowRecovering ||
+    !targetWindow ||
+    targetWindow.isDestroyed() ||
+    reminderWindow !== targetWindow
+  ) {
+    return false;
+  }
+
+  reminderWindowRecovering = true;
+  reminderWindowReady = false;
+  targetWindow.setIgnoreMouseEvents(true);
+  targetWindow.hide();
+  console.warn(`提醒窗口渲染异常，正在恢复：${reason}`);
+  reminderWindowReadyPromise = targetWindow
+    .loadFile(path.join(APP_ROOT, "reminder.html"))
+    .then(() => {
+      if (targetWindow.isDestroyed() || reminderWindow !== targetWindow) return false;
+      reminderWindowReady = true;
+      reminderWindowRecovering = false;
+      if (currentReminder) sendCurrentReminder();
+      return true;
+    })
+    .catch((error) => {
+      reminderWindowRecovering = false;
+      console.error("提醒窗口恢复失败", error);
+      return false;
+    });
   return true;
 }
 
@@ -398,6 +440,21 @@ function createReminderWindow() {
       if (!targetWindow.isDestroyed()) targetWindow.destroy();
       return false;
     });
+  targetWindow.webContents.on("render-process-gone", (_event, details) => {
+    recoverReminderRenderer(targetWindow, details?.reason || "render-process-gone");
+  });
+  targetWindow.on("unresponsive", () => {
+    if (reminderUnresponsiveTimer) clearTimeout(reminderUnresponsiveTimer);
+    reminderUnresponsiveTimer = setTimeout(() => {
+      reminderUnresponsiveTimer = null;
+      recoverReminderRenderer(targetWindow, "unresponsive");
+    }, 3000);
+    reminderUnresponsiveTimer.unref?.();
+  });
+  targetWindow.on("responsive", () => {
+    if (reminderUnresponsiveTimer) clearTimeout(reminderUnresponsiveTimer);
+    reminderUnresponsiveTimer = null;
+  });
   reminderWindow.on("closed", () => {
     if (reminderHideGuardTimer) {
       clearTimeout(reminderHideGuardTimer);
@@ -406,6 +463,7 @@ function createReminderWindow() {
     reminderWindow = null;
     reminderWindowReady = false;
     reminderWindowReadyPromise = null;
+    reminderWindowRecovering = false;
     currentReminder = null;
     reminderQueue.length = 0;
   });
@@ -649,6 +707,37 @@ function closeFloatWindow() {
   return true;
 }
 
+function recoverMainRenderer(targetWindow, reason) {
+  if (
+    isQuitting ||
+    mainWindowRecovering ||
+    !targetWindow ||
+    targetWindow.isDestroyed() ||
+    mainWindow !== targetWindow
+  ) {
+    return false;
+  }
+
+  mainWindowRecovering = true;
+  closePromptPending = false;
+  console.warn(`主界面渲染异常，正在恢复：${reason}`);
+  const finishRecovery = () => {
+    if (targetWindow.isDestroyed() || mainWindow !== targetWindow) return;
+    mainWindowRecovering = false;
+    targetWindow.setIcon(APP_ICON_PATH);
+    applyTaskbarDetails(targetWindow);
+  };
+  targetWindow.webContents.once("did-finish-load", finishRecovery);
+  try {
+    targetWindow.webContents.reloadIgnoringCache();
+  } catch (error) {
+    mainWindowRecovering = false;
+    console.error("主界面恢复失败", error);
+    return false;
+  }
+  return true;
+}
+
 function createMainWindow(options = {}) {
   const config = getGlobalConfig();
   const showOnReady = options.showOnReady !== false;
@@ -677,6 +766,22 @@ function createMainWindow(options = {}) {
   applyTaskbarDetails(mainWindow);
 
   mainWindow.loadFile(path.join(APP_ROOT, "index.html"));
+  const targetWindow = mainWindow;
+  targetWindow.webContents.on("render-process-gone", (_event, details) => {
+    recoverMainRenderer(targetWindow, details?.reason || "render-process-gone");
+  });
+  targetWindow.on("unresponsive", () => {
+    if (mainUnresponsiveTimer) clearTimeout(mainUnresponsiveTimer);
+    mainUnresponsiveTimer = setTimeout(() => {
+      mainUnresponsiveTimer = null;
+      recoverMainRenderer(targetWindow, "unresponsive");
+    }, 3000);
+    mainUnresponsiveTimer.unref?.();
+  });
+  targetWindow.on("responsive", () => {
+    if (mainUnresponsiveTimer) clearTimeout(mainUnresponsiveTimer);
+    mainUnresponsiveTimer = null;
+  });
   mainWindow.on("close", (event) => {
     setMainWindowBounds(mainWindow.getBounds());
     if (isQuitting) return;
@@ -715,6 +820,8 @@ module.exports = {
   quitApplication,
   requestCloseMainWindow,
   refreshReminderWindowPlacement,
+  recoverMainRenderer,
+  recoverReminderRenderer,
   resolveCloseMainWindow,
   saveFloatWindowBounds,
   showMainWindow,

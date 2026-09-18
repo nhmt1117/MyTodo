@@ -12,6 +12,7 @@ function loadWindows(options = {}) {
     constructor() {
       super();
       this.messages = [];
+      this.reloadCount = 0;
     }
 
     send(channel, payload) {
@@ -20,6 +21,11 @@ function loadWindows(options = {}) {
 
     isLoadingMainFrame() {
       return false;
+    }
+
+    reloadIgnoringCache() {
+      this.reloadCount += 1;
+      this.emit("did-finish-load");
     }
   }
 
@@ -32,6 +38,7 @@ function loadWindows(options = {}) {
       this.visible = windowOptions.show === true;
       this.hideCount = 0;
       this.ignoreMouseEvents = [];
+      this.loadCount = 0;
       createdWindows.push(this);
     }
 
@@ -43,9 +50,11 @@ function loadWindows(options = {}) {
     }
     setSkipTaskbar() {}
     setAlwaysOnTop() {}
+    setAppDetails(details) { this.appDetails = details; }
+    setIcon(icon) { this.icon = icon; }
     setIgnoreMouseEvents(value) { this.ignoreMouseEvents.push(value); }
     showInactive() { this.visible = true; }
-    loadFile() { return Promise.resolve(); }
+    loadFile() { this.loadCount += 1; return Promise.resolve(); }
 
     hide() {
       this.hideCount += 1;
@@ -202,4 +211,31 @@ test("application shutdown destroys the hidden reminder window", async () => {
   assert.equal(targetWindow.destroyed, false);
   windows.prepareForApplicationQuit();
   assert.equal(targetWindow.destroyed, true);
+});
+
+test("a crashed reminder renderer reloads without losing the active reminder", async () => {
+  const { windows, createdWindows } = loadWindows();
+  await windows.prepareReminderWindow();
+  const targetWindow = createdWindows[0];
+  windows.showReminder(reminder());
+  const displayId = targetWindow.webContents.messages.at(-1).payload.displayId;
+
+  targetWindow.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(targetWindow.destroyed, false);
+  assert.equal(targetWindow.loadCount, 2);
+  assert.equal(targetWindow.webContents.messages.at(-1).payload.displayId, displayId);
+  assert.equal(targetWindow.visible, true);
+});
+
+test("a crashed main renderer reloads in place", () => {
+  const { windows, createdWindows } = loadWindows();
+  windows.createMainWindow({ showOnReady: false });
+  const targetWindow = createdWindows[0];
+
+  assert.equal(windows.recoverMainRenderer(targetWindow, "crashed"), true);
+  assert.equal(targetWindow.webContents.reloadCount, 1);
+  assert.equal(targetWindow.destroyed, false);
+  assert.equal(targetWindow.appDetails.appId, "com.nhmt.mytodo");
 });

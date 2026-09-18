@@ -23,6 +23,8 @@ let startedAt = "";
 let lastCheckAt = "";
 let nextCheckAt = "";
 let lastError = "";
+let lastClockSignature = "";
+let lastRecoveryReason = "";
 
 function getMinutesOfDay(time) {
   const [hour, minute] = normalizeTime(time).split(":").map(Number);
@@ -220,9 +222,31 @@ function ensurePrecisionTimer() {
   precisionTimer.unref?.();
 }
 
+function getClockSignature(now) {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  return `${timezone}:${now.getTimezoneOffset()}`;
+}
+
+function clearPrecisionSchedule() {
+  precisionQueue.clear();
+  if (precisionTimer) clearInterval(precisionTimer);
+  precisionTimer = null;
+}
+
 function runScheduledCheck(now = new Date()) {
   const checkedAt = new Date(now);
   try {
+    const clockSignature = getClockSignature(checkedAt);
+    const previousCheckAt = Date.parse(lastCheckAt);
+    const elapsed = Number.isNaN(previousCheckAt) ? 0 : checkedAt.getTime() - previousCheckAt;
+    if (
+      lastClockSignature &&
+      (clockSignature !== lastClockSignature || elapsed < 0 || elapsed > CHECK_INTERVAL_MS + LOOKAHEAD_MS)
+    ) {
+      clearPrecisionSchedule();
+      lastRecoveryReason = clockSignature !== lastClockSignature ? "timezone-change" : "clock-jump";
+    }
+    lastClockSignature = clockSignature;
     const sent = checkReminders(checkedAt);
     queueUpcomingReminders(checkedAt);
     ensurePrecisionTimer();
@@ -237,6 +261,15 @@ function runScheduledCheck(now = new Date()) {
     console.error("提醒服务检查失败", error);
     return [];
   }
+}
+
+function refreshReminderSchedule(now = new Date(), reason = "manual") {
+  clearPrecisionSchedule();
+  lastRecoveryReason = String(reason || "manual");
+  lastCheckAt = "";
+  const current = new Date(now);
+  if (!Number.isNaN(current.getTime())) lastClockSignature = getClockSignature(current);
+  return runScheduledCheck(now);
 }
 
 function getReminderServiceStatus(now = new Date()) {
@@ -254,6 +287,7 @@ function getReminderServiceStatus(now = new Date()) {
     lookaheadSeconds: LOOKAHEAD_MS / 1000,
     precisionSeconds: PRECISION_INTERVAL_MS / 1000,
     queuedReminderCount: precisionQueue.size,
+    lastRecoveryReason,
     quietHoursActive,
     quietHoursResumeAt: quietHoursActive ? getQuietHoursResumeAt(current, config) : "",
   };
@@ -278,6 +312,7 @@ function stopReminderScheduler() {
   if (precisionTimer) clearInterval(precisionTimer);
   scanTimer = null;
   precisionTimer = null;
+  lastClockSignature = "";
 }
 
 module.exports = {
@@ -287,7 +322,9 @@ module.exports = {
   getWeekStartKey,
   isWithinQuietHours,
   queueUpcomingReminders,
+  refreshReminderSchedule,
   runPrecisionQueue,
+  runScheduledCheck,
   startReminderScheduler,
   stopReminderScheduler,
 };

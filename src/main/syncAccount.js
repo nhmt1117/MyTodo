@@ -189,7 +189,6 @@ function registerSyncAccount(details = {}) {
     registeredAt: new Date().toISOString(),
   });
   saveSyncAccount();
-  saveSyncAccount();
   accountStatus = { state: "ok", message: "同步账户正常", readOnly: false };
   return clonePublicAccount();
 }
@@ -199,7 +198,6 @@ function updateRefreshToken(refreshToken) {
   assertWritable();
   if (!account.enabled || !refreshToken) return false;
   account.refreshTokenEncrypted = encryptSecret(refreshToken);
-  saveSyncAccount();
   saveSyncAccount();
   return true;
 }

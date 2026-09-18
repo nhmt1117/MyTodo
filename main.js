@@ -1,4 +1,4 @@
-const { app, dialog } = require("electron");
+const { app, dialog, powerMonitor } = require("electron");
 const { applyAutoStartSetting, loadGlobalConfig, setGlobalConfig } = require("./src/main/config");
 const { initializeDataDirectory } = require("./src/main/dataLocation");
 const { consumeInstallerOptions } = require("./src/main/installOptions");
@@ -6,6 +6,7 @@ const { isInstallationInProgress } = require("./src/main/installLock");
 const { registerIpcHandlers } = require("./src/main/ipc");
 const { initializeLogger } = require("./src/main/logger");
 const {
+  refreshReminderSchedule,
   startReminderScheduler,
   stopReminderScheduler,
 } = require("./src/main/reminderScheduler");
@@ -28,6 +29,36 @@ const {
 } = require("./src/main/windows");
 
 app.setAppUserModelId("com.nhmt.mytodo");
+
+let powerRefreshTimer = null;
+const powerHandlers = new Map();
+
+function registerPowerMonitorHandlers() {
+  if (!powerMonitor || typeof powerMonitor.on !== "function") return;
+  for (const eventName of ["resume", "unlock-screen"]) {
+    const handler = () => {
+      if (powerRefreshTimer) clearTimeout(powerRefreshTimer);
+      powerRefreshTimer = setTimeout(() => {
+        powerRefreshTimer = null;
+        refreshReminderSchedule(new Date(), eventName);
+      }, 750);
+      powerRefreshTimer.unref?.();
+    };
+    powerHandlers.set(eventName, handler);
+    powerMonitor.on(eventName, handler);
+  }
+}
+
+function unregisterPowerMonitorHandlers() {
+  if (powerRefreshTimer) clearTimeout(powerRefreshTimer);
+  powerRefreshTimer = null;
+  if (powerMonitor && typeof powerMonitor.removeListener === "function") {
+    for (const [eventName, handler] of powerHandlers) {
+      powerMonitor.removeListener(eventName, handler);
+    }
+  }
+  powerHandlers.clear();
+}
 
 const installationInProgress = isInstallationInProgress();
 const hasSingleInstanceLock = !installationInProgress && app.requestSingleInstanceLock();
@@ -68,6 +99,7 @@ if (installationInProgress) {
     await showStartupStorageNotice();
     await prepareReminderWindow();
     startReminderScheduler({ showReminder });
+    registerPowerMonitorHandlers();
   }).catch((error) => {
     console.error("MyTodo 启动失败", error);
     dialog.showErrorBox("MyTodo 启动失败", String(error && error.message ? error.message : error));
@@ -75,6 +107,7 @@ if (installationInProgress) {
   });
 
   app.on("before-quit", () => {
+    unregisterPowerMonitorHandlers();
     stopReminderScheduler();
     syncManager.stopSyncManager();
     stopUpdateManager();

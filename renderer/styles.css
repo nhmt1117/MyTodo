@@ -630,15 +630,63 @@ button{outline:none}
 .path-input{width:min(390px,45vw);height:32px;padding:0 9px;font-size:11px}
 .support-actions{flex-wrap:wrap;justify-content:flex-end}
 .sync-server-control{min-width:0;flex:1;justify-content:flex-end}
-.sync-server-input{width:min(360px,42vw)}
+.sync-server-input{width:min(310px,34vw)}
 .sync-state-dot{width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:#aab3bd;box-shadow:0 0 0 4px rgba(170,179,189,.16)}
 .sync-state-dot[data-state="idle"]{background:#1d9a72;box-shadow:0 0 0 4px rgba(29,154,114,.14)}
 .sync-state-dot[data-state="syncing"],.sync-state-dot[data-state="connecting"]{background:#4f46e5;box-shadow:0 0 0 4px rgba(79,70,229,.14)}
 .sync-state-dot[data-state="offline"],.sync-state-dot[data-state="attention"]{background:#c58118;box-shadow:0 0 0 4px rgba(197,129,24,.14)}
+.sync-devices-row{align-items:flex-start}
+.sync-devices-control{width:min(430px,58%);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.sync-device-list{width:100%;border-top:1px solid #e8ecef}
+.sync-device-empty{display:block;padding:12px 2px 2px;color:#7c8795;text-align:right;font-size:10px}
+.sync-device-item{min-height:46px;display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #edf0f2}
+.sync-device-item:last-child{border-bottom:0}
+.sync-device-icon{width:28px;height:28px;flex:0 0 28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#4f46e5;background:#ededff}
+.sync-device-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sync-device-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+.sync-device-info strong{overflow:hidden;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.sync-device-info span{color:#7c8795;font-size:9px}
+.sync-device-current{color:#27775f!important;font-weight:650}
+.sync-device-remove{height:27px;padding:0 8px;border:1px solid #d9e0e5;border-radius:5px;color:#596676;background:#fff;cursor:pointer;font-size:10px}
+.sync-device-remove:hover{border-color:#b8c2cc;background:#f7f9fa}
 .modal-note{color:#6f7b89;font-size:11px;line-height:1.6}
 .recovery-key-modal{width:min(560px,calc(100vw - 48px))}
 .recovery-key-modal>p{padding:0 20px;color:#697585;font-size:11px;line-height:1.55}
 .recovery-key-value{margin:4px 20px 18px;padding:12px;border:1px solid rgba(79,70,229,.2);border-radius:6px;color:#312e81;background:rgba(238,238,255,.72);font:600 12px/1.6 Consolas,monospace;overflow-wrap:anywhere;user-select:all}
+.sync-form-modal{width:min(520px,calc(100vw - 60px))}
+.sync-form-content{display:flex;flex-direction:column;gap:8px}
+.sync-form-content label,.conflict-version label{color:#536071;font-size:10px;font-weight:650}
+.sync-form-content textarea,.conflict-version input,.conflict-version textarea{
+  width:100%;
+  border:1px solid rgba(199,207,216,.9);
+  border-radius:6px;
+  color:#253043;
+  background:rgba(255,255,255,.72);
+  outline:none;
+  font:inherit;
+}
+.sync-form-content textarea{height:90px;padding:10px;resize:none;font:11px/1.55 Consolas,monospace}
+.sync-form-content textarea:focus,.conflict-version input:focus,.conflict-version textarea:focus{border-color:#7770ed;box-shadow:0 0 0 2px rgba(79,70,229,.1)}
+.sync-form-content p{margin:2px 0 0;color:#6f7b89;font-size:11px;line-height:1.55}
+.pairing-modal{width:min(560px,calc(100vw - 60px))}
+.pairing-content{display:grid;grid-template-columns:220px minmax(0,1fr);align-items:center;gap:24px}
+.pairing-content img{width:220px;height:220px;border:1px solid rgba(210,216,222,.9);border-radius:6px;background:#fff}
+.pairing-copy{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.pairing-copy>span{color:#707c8b;font-size:10px}
+.pairing-copy strong{letter-spacing:6px;color:#302da0;font:700 30px/1.2 Consolas,monospace}
+.pairing-copy p{margin:12px 0 0;color:#2e3b4e;font-size:12px;font-weight:650}
+.conflict-modal{width:min(720px,calc(100vw - 60px));max-height:calc(100vh - 72px)}
+.conflict-modal .modal-header p{margin:4px 0 0;color:#7c8795;font-size:10px}
+.conflict-content{min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;overflow:auto}
+.conflict-version{min-width:0;display:flex;flex-direction:column;gap:7px;padding:14px;border:1px solid rgba(211,218,224,.85);border-radius:8px;background:rgba(255,255,255,.48)}
+.conflict-version-head{display:flex;flex-direction:column;gap:3px;margin-bottom:4px}
+.conflict-version-head strong{font-size:12px}
+.conflict-version-head span{color:#7c8795;font-size:9px}
+.conflict-version input{height:32px;padding:0 9px;font-size:11px}
+.conflict-version textarea{height:108px;padding:9px;resize:none;font-size:11px;line-height:1.5}
+.conflict-readonly{min-height:32px;padding:8px 9px;overflow-wrap:anywhere;border:1px solid rgba(215,221,227,.75);border-radius:6px;color:#3c4859;background:rgba(245,247,249,.68);font-size:11px;line-height:1.45}
+.conflict-readonly.conflict-description{height:108px;overflow:auto}
+.conflict-meta{min-height:15px;margin-top:auto;color:#7c8795;font-size:9px}
 .about-logo{display:flex;align-items:center;gap:10px}
 .about-logo img{width:36px;height:36px}
 .about-logo div{display:flex;flex-direction:column;gap:3px}
@@ -688,6 +736,9 @@ button{outline:none}
 .detail-modal{width:min(520px,calc(100vw - 100px));max-height:calc(100vh - 100px)}
 .confirm-modal{width:370px}
 .confirm-modal>p{margin:0;color:#677384;font-size:12px}
+.restore-data-modal{width:min(430px,calc(100vw - 100px))}
+.restore-data-modal>#restoreDataSummary{line-height:1.65}
+.restore-data-modal>.modal-note{margin-top:9px}
 .close-app-modal{width:min(430px,calc(100vw - 100px))}
 .update-available-modal{width:min(520px,calc(100vw - 80px));min-height:250px}
 .update-modal-brand{display:flex;align-items:center;gap:9px;color:#354255;font-size:11px}
@@ -900,6 +951,8 @@ button{outline:none}
   .task-meta{min-width:135px}
   .strategy-row{grid-template-columns:70px 90px minmax(0,1fr)}
   .settings-layout{grid-template-columns:140px minmax(0,1fr)}
+  .sync-server-control{flex-wrap:wrap}
+  .sync-server-input{width:min(280px,38vw)}
 }
 @media(max-height:720px){
   .page-header{min-height:66px;flex-basis:66px;padding-top:12px;padding-bottom:10px}

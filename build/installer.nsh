@@ -906,6 +906,15 @@ FunctionEnd
     StrCpy $IsInAppUpdate "1"
   ${EndIf}
 
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "--shell-managed" $1
+  ${IfNot} ${Errors}
+    ; The HTML installer shell has already selected the exact target directory,
+    ; checked versions, and created the installation lock. Keep its trailing /D.
+    Return
+  ${EndIf}
+
   ${If} ${UAC_IsInnerInstance}
     Return
   ${EndIf}

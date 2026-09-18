@@ -5,6 +5,7 @@ release/
 .v1-test-profile/
 .*-profile/
 .release-smoke/
+.tmp/
 .icon-work/
 installer-shell/bin/
 installer-shell/obj/

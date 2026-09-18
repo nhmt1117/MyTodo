@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.9");
+  assert.equal(pkg.version, "2.0.10");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -274,6 +274,9 @@ test("Windows installer update flow uses GitHub release assets and direct upgrad
   assert.match(workflow, /\$assets = @\(\$asset, "\$asset\.blockmap", "dist\/latest\.yml"\)/);
   assert.match(workflow, /gh release upload \$tag \$assets --clobber/);
   assert.match(workflow, /gh release create[\s\S]*?--notes-file/);
+  assert.match(workflow, /Get-Content -LiteralPath "CHANGELOG\.md" -Raw/);
+  assert.match(workflow, /CHANGELOG\.md does not contain release notes for \$version/);
+  assert.doesNotMatch(workflow, /修复从早期版本升级后/);
   assert.doesNotMatch(workflow, /--draft/);
   assert.doesNotMatch(workflow, /runs-on: (?:ubuntu|macos)/);
 });
@@ -375,6 +378,8 @@ test("desktop release protects one local instance and exposes recovery tools", (
   assert.match(ipc, /ipcMain\.handle\("cancel-close-confirmation"[\s\S]*?cancelCloseMainWindow/);
   assert.match(index, /id="openDataLocationBtn"/);
   assert.match(index, /id="exportDataBackupBtn"/);
+  assert.match(index, /id="restoreDataBackupBtn"/);
+  assert.match(index, /id="restoreDataModal"[\s\S]*?id="confirmRestoreData"/);
   assert.doesNotMatch(index, /id="openLogDirectoryBtn"|<strong>运行日志<\/strong>/);
   assert.match(index, /class="about-version-line"[\s\S]*?id="appVersion"[\s\S]*?id="updateActionButton"/);
   assert.match(index, /\.\/assets\/mytodo-icon-source\.png/);
@@ -382,16 +387,42 @@ test("desktop release protects one local instance and exposes recovery tools", (
   assert.match(index, /id="closeToTrayPromptCheck"/);
   assert.match(index, /id="closeAppModal"[\s\S]*?id="closeAppDontAsk"[\s\S]*?id="closeToTrayButton"[\s\S]*?id="quitAppButton"/);
   assert.match(index, /id="notificationSoundCheck"/);
-  assert.match(preload, /getStorageStatus:[\s\S]*?exportDataBackup:[\s\S]*?openLogDirectory:/);
+  assert.match(preload, /getStorageStatus:[\s\S]*?exportDataBackup:[\s\S]*?selectDataBackup:[\s\S]*?restoreDataBackup:[\s\S]*?openLogDirectory:/);
   assert.match(preload, /resolveCloseConfirmation:[\s\S]*?cancelCloseConfirmation:[\s\S]*?onCloseConfirmationRequested:/);
   assert.match(ipc, /get-reminder-service-status/);
-  assert.match(ipc, /open-data-directory[\s\S]*?export-data-backup[\s\S]*?open-log-directory/);
+  assert.match(ipc, /open-data-directory[\s\S]*?export-data-backup[\s\S]*?select-data-backup[\s\S]*?restore-data-backup[\s\S]*?open-log-directory/);
   assert.match(support, /function getStorageStatus\(\)/);
+  assert.match(support, /function getPreRestoreBackupFileName[\s\S]*?MyTodo-Before-Restore-/);
+  assert.match(support, /function restoreDataBackup\(filePath\)[\s\S]*?getPreRestoreBackupFileName\(\)/);
   assert.match(renderer, /closeToTrayPromptCheck[\s\S]*?saveConfigPatch\(\{ closeToTrayPrompt:/);
   assert.match(renderer, /function showCloseAppModal\(\)[\s\S]*?closeAppModal/);
   assert.match(renderer, /function cancelCloseAppModal\(\)[\s\S]*?cancelCloseConfirmation/);
   assert.match(renderer, /resolveCloseConfirmation\(action, dontAskAgain\)[\s\S]*?appConfig = result\.config[\s\S]*?applyConfigToSettings\(\)/);
   assert.match(renderer, /event\.key === "Escape"[\s\S]*?cancelCloseAppModal\(\)[\s\S]*?electronAPI\.winClose\(\)/);
+  assert.match(renderer, /function chooseDataBackupForRestore\(\)[\s\S]*?selectDataBackup\(\)/);
+  assert.match(renderer, /function confirmRestoreData\(\)[\s\S]*?restoreDataBackup\(pendingRestoreBackup\.filePath\)/);
+  assert.match(main, /powerMonitor[\s\S]*?"resume"[\s\S]*?"unlock-screen"[\s\S]*?refreshReminderSchedule/);
+  assert.match(windows, /render-process-gone[\s\S]*?recoverReminderRenderer/);
+  assert.match(windows, /function recoverMainRenderer[\s\S]*?reloadIgnoringCache/);
+});
+
+test("desktop retains hidden multi-device groundwork for later development", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  const index = read("index.html");
+  const preload = read("preload.js");
+  const ipc = read("src/main/ipc.js");
+  const manager = read("src/main/syncManager.js");
+  const renderer = read("renderer/renderer.js");
+
+  assert.equal(packageJson.dependencies.qrcode, "^1.5.4");
+  assert.match(index, /<!-- 多端同步尚未面向本地版用户开放。[\s\S]*?data-setting="syncSetting"[\s\S]*?-->/);
+  assert.match(index, /<!-- 多端同步设置保留用于后续开发[\s\S]*?id="recoverSyncButton"[\s\S]*?id="pairPhoneButton"[\s\S]*?id="syncDeviceList"[\s\S]*?-->/);
+  assert.match(index, /id="syncRecoverModal"[\s\S]*?id="syncPairingModal"[\s\S]*?id="syncConflictModal"/);
+  assert.match(preload, /recoverSyncAccount:[\s\S]*?createPairingSession:[\s\S]*?listSyncDevices:[\s\S]*?resolveSyncConflict:/);
+  assert.match(ipc, /recover-sync-account[\s\S]*?create-pairing-session[\s\S]*?list-sync-devices[\s\S]*?resolve-sync-conflict/);
+  assert.match(manager, /async function recoverSyncAccount[\s\S]*?async function createPairingSession/);
+  assert.match(manager, /function getSyncConflicts[\s\S]*?async function resolveSyncConflict/);
+  assert.match(renderer, /async function pollPairingStatus[\s\S]*?async function resolveActiveConflict/);
 });
 
 test("development reminders are hidden and blocked in packaged builds", () => {

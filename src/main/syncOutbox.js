@@ -59,6 +59,9 @@ function cloneMutation(item) {
   return {
     ...item,
     ...(item.payload ? { payload: JSON.parse(JSON.stringify(item.payload)) } : {}),
+    ...(item.serverEntity
+      ? { serverEntity: JSON.parse(JSON.stringify(item.serverEntity)) }
+      : {}),
   };
 }
 
@@ -230,10 +233,25 @@ function removeMutation(mutationId) {
   return outbox.length !== previousLength;
 }
 
+function removeEntityMutations(entityId) {
+  ensureLoaded();
+  assertWritable();
+  const normalizedId = String(entityId || "").toLowerCase();
+  const previousLength = outbox.length;
+  outbox = outbox.filter((item) => item.entityId !== normalizedId);
+  if (outbox.length !== previousLength) saveSyncOutbox();
+  return previousLength - outbox.length;
+}
+
 function getPendingMutations(limit = 100) {
   ensureLoaded();
   const maximum = Math.max(1, Math.min(100, Math.round(Number(limit) || 100)));
   return outbox.filter((item) => !item.blockedReason).slice(0, maximum).map(cloneMutation);
+}
+
+function getBlockedMutations() {
+  ensureLoaded();
+  return outbox.filter((item) => item.blockedReason).map(cloneMutation);
 }
 
 function getSyncOutboxStatus() {
@@ -251,6 +269,7 @@ function getSyncOutboxStatus() {
 module.exports = {
   enqueueTodoDelete,
   enqueueTodoUpsert,
+  getBlockedMutations,
   getPendingMutations,
   getSyncOutboxStatus,
   hasPendingForEntity,
@@ -258,6 +277,7 @@ module.exports = {
   markMutationBlocked,
   markMutationAttempt,
   rebaseEntityMutations,
+  removeEntityMutations,
   removeMutation,
   saveSyncOutbox,
   setMutationError,

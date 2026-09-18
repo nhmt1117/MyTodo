@@ -38,7 +38,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getStorageStatus: () => ipcRenderer.invoke("get-storage-status"),
   getSyncState: () => ipcRenderer.invoke("get-sync-state"),
   enableSync: (options) => ipcRenderer.invoke("enable-sync", options),
+  recoverSyncAccount: (options) => ipcRenderer.invoke("recover-sync-account", options),
   syncNow: () => ipcRenderer.invoke("sync-now"),
+  createPairingSession: (options) => ipcRenderer.invoke("create-pairing-session", options),
+  getPairingSessionStatus: (sessionId) => ipcRenderer.invoke("get-pairing-session-status", sessionId),
+  listSyncDevices: () => ipcRenderer.invoke("list-sync-devices"),
+  revokeSyncDevice: (deviceId) => ipcRenderer.invoke("revoke-sync-device", deviceId),
+  getSyncConflicts: () => ipcRenderer.invoke("get-sync-conflicts"),
+  resolveSyncConflict: (options) => ipcRenderer.invoke("resolve-sync-conflict", options),
   copyText: (value) => clipboard.writeText(String(value || "")),
   onSyncStatus: (callback) => {
     if (typeof callback !== "function") return () => {};
@@ -68,6 +75,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   chooseDataLocation: () => ipcRenderer.invoke("choose-data-location"),
   openDataDirectory: () => ipcRenderer.invoke("open-data-directory"),
   exportDataBackup: () => ipcRenderer.invoke("export-data-backup"),
+  selectDataBackup: () => ipcRenderer.invoke("select-data-backup"),
+  restoreDataBackup: (filePath) => ipcRenderer.invoke("restore-data-backup", filePath),
   openLogDirectory: () => ipcRenderer.invoke("open-log-directory"),
   toggleFloatWin: () => ipcRenderer.invoke("toggle-float-win"),
   moveFloatWin: (deltaX, deltaY) => ipcRenderer.invoke("move-float-win", deltaX, deltaY),

@@ -215,6 +215,69 @@ function getTodoStorageStatus() {
   return { ...todoStorageStatus };
 }
 
+function restoreTodoList(items = [], now = new Date()) {
+  if (!Array.isArray(items)) throw new Error("备份中的任务列表无效");
+  const restoredAt = new Date(now);
+  if (Number.isNaN(restoredAt.getTime())) throw new Error("恢复时间无效");
+
+  const previousData = todoData.map(cloneTodo);
+  const previousNextId = nextId;
+  const previousStatus = { ...todoStorageStatus };
+  const existingByUuid = new Map(previousData.map((item) => [item.uuid, item]));
+  const usedUuids = new Set();
+  const usedIds = new Set();
+  const restored = [];
+  const restoredTimestamp = restoredAt.toISOString();
+
+  for (const source of items) {
+    const item = normalizeTodoItem(source, restoredAt);
+    if (!item.text) throw new Error("备份中包含无效任务");
+    while (usedUuids.has(item.uuid)) item.uuid = randomUUID();
+    usedUuids.add(item.uuid);
+
+    let id = Number(item.id);
+    if (!Number.isInteger(id) || id < 1 || usedIds.has(id)) {
+      id = 1;
+      while (usedIds.has(id)) id += 1;
+    }
+    item.id = id;
+    usedIds.add(id);
+
+    const current = existingByUuid.get(item.uuid);
+    item.cloudRevision = Math.max(item.cloudRevision, current?.cloudRevision || 0);
+    item.syncState = item.cloudRevision > 0 ? "pending" : "local";
+    item.deletedAt = "";
+    item.updatedAt = restoredTimestamp;
+    restored.push(item);
+  }
+
+  const deletedForSync = previousData
+    .filter((item) => !item.deletedAt && item.cloudRevision > 0 && !usedUuids.has(item.uuid))
+    .map((item) => ({
+      ...item,
+      deletedAt: restoredTimestamp,
+      updatedAt: restoredTimestamp,
+      syncState: "pending",
+    }));
+  const existingTombstones = previousData.filter((item) => item.deletedAt && !usedUuids.has(item.uuid));
+
+  todoData = [...restored, ...deletedForSync, ...existingTombstones];
+  nextId = getNextIdFromList(todoData);
+  todoStorageStatus = { state: "ok", message: "任务数据正常", readOnly: false };
+  try {
+    saveTodoFile();
+  } catch (error) {
+    todoData = previousData;
+    nextId = previousNextId;
+    todoStorageStatus = previousStatus;
+    throw error;
+  }
+
+  restored.forEach((item) => emitTodoMutation("upsert", item));
+  deletedForSync.forEach((item) => emitTodoMutation("delete", item));
+  return getTodoList();
+}
+
 function addTodoItem(payload = {}) {
   assertTodoStorageWritable();
   const text = limitText(payload.text, TITLE_MAX_LENGTH).trim();
@@ -489,6 +552,33 @@ function setTodoCloudState(entityId, revision, syncState = "synced") {
   return cloneTodo(target);
 }
 
+function prepareTodoConflictResolution(entityId, revision, patch = {}, options = {}) {
+  const target = todoData.find((item) => item.uuid === String(entityId || "").toLowerCase());
+  if (!target) return null;
+  assertTodoStorageWritable();
+
+  if (Object.prototype.hasOwnProperty.call(patch, "text")) {
+    const text = limitText(patch.text, TITLE_MAX_LENGTH).trim();
+    if (text) target.text = text;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "desc")) {
+    target.desc = limitText(patch.desc, DESCRIPTION_MAX_LENGTH);
+  }
+
+  if (options.recreate === true) {
+    target.uuid = randomUUID();
+    target.deletedAt = "";
+    target.cloudRevision = 0;
+    target.syncState = "local";
+  } else {
+    target.cloudRevision = normalizeCloudRevision(revision);
+    target.syncState = "pending";
+  }
+  target.updatedAt = new Date().toISOString();
+  saveTodoFile();
+  return cloneTodo(target);
+}
+
 function markRemindersSent(entries = []) {
   if (entries.length) assertTodoStorageWritable();
   let changed = false;
@@ -531,6 +621,8 @@ module.exports = {
   loadTodoFile,
   markRemindersSent,
   muteTodoRemind,
+  prepareTodoConflictResolution,
+  restoreTodoList,
   saveTodoFile,
   setArchived,
   setTodoCloudState,

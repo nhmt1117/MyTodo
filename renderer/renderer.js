@@ -19,6 +19,13 @@ let deleteTargetId = null;
 let refreshPending = false;
 let updateState = null;
 let syncState = null;
+let pairingSession = null;
+let pairingTimer = null;
+let pairingPollBusy = false;
+let syncConflicts = [];
+let activeConflictIndex = 0;
+let pendingRevokeDevice = null;
+let pendingRestoreBackup = null;
 let lastUpdatePhase = "";
 let lastPromptedUpdateVersion = "";
 let backTopTarget = null;
@@ -880,9 +887,14 @@ function renderSyncState(nextState, announce) {
   const detail = $("#syncStatusDetail");
   const dot = $("#syncStateDot");
   const enableButton = $("#enableSyncButton");
+  const recoverButton = $("#recoverSyncButton");
   const syncButton = $("#syncNowButton");
   const serverInput = $("#syncServerUrl");
   const actionsRow = $("#syncActionsRow");
+  const pairingRow = $("#syncPairingRow");
+  const devicesRow = $("#syncDevicesRow");
+  const conflictButton = $("#syncConflictButton");
+  if (!title) return;
   const labels = {
     disabled: "尚未启用",
     connecting: "正在启用同步",
@@ -897,9 +909,16 @@ function renderSyncState(nextState, announce) {
   if (account.serverUrl) serverInput.value = account.serverUrl;
   serverInput.disabled = enabled || phase === "connecting";
   enableButton.classList.toggle("hidden", enabled);
+  recoverButton.classList.toggle("hidden", enabled);
   actionsRow.classList.toggle("hidden", !enabled);
+  pairingRow.classList.toggle("hidden", !enabled);
+  devicesRow.classList.toggle("hidden", !enabled);
   enableButton.disabled = phase === "connecting";
+  recoverButton.disabled = phase === "connecting";
   syncButton.disabled = phase === "syncing" || phase === "connecting";
+  const conflictCount = Number(syncState.conflictCount) || 0;
+  conflictButton.classList.toggle("hidden", !enabled || conflictCount === 0);
+  conflictButton.textContent = conflictCount ? "处理冲突 (" + conflictCount + ")" : "处理冲突";
 
   if (!enabled) {
     detail.textContent = "本机有 " + (Number(syncState.localTodoCount) || 0) +
@@ -955,6 +974,7 @@ async function confirmEnableSync() {
       $("#recoveryKeyValue").textContent = result.recoveryKey;
       $("#recoveryKeyModal").classList.remove("hidden");
     }
+    await refreshSyncDevices();
   } catch (error) {
     showToast("启用同步失败：" + (error.message || "请检查同步服务"));
   } finally {
@@ -971,6 +991,285 @@ async function runManualSync() {
     showToast("同步失败：" + (error.message || "请稍后重试"));
   } finally {
     button.disabled = false;
+  }
+}
+
+function closeSyncRecoverModal() {
+  $("#syncRecoverModal").classList.add("hidden");
+}
+
+function openSyncRecoverModal() {
+  const count = Number(syncState?.localTodoCount) || todoList.length;
+  $("#syncRecoverSummary").textContent = count
+    ? "恢复后会下载云端待办，并将本机现有的 " + count + " 项待办合并到该账户。"
+    : "恢复后会下载该账户的云端待办。";
+  $("#syncRecoveryKey").value = "";
+  $("#syncRecoverModal").classList.remove("hidden");
+  $("#syncRecoveryKey").focus();
+}
+
+async function confirmRecoverSync() {
+  const recoveryKey = $("#syncRecoveryKey").value.trim();
+  if (recoveryKey.length < 32) {
+    showToast("请输入有效的账户恢复密钥");
+    $("#syncRecoveryKey").focus();
+    return;
+  }
+  const button = $("#confirmRecoverSync");
+  button.disabled = true;
+  try {
+    const result = await window.electronAPI.recoverSyncAccount({
+      serverUrl: $("#syncServerUrl").value,
+      recoveryKey,
+      confirmExistingUpload: true,
+    });
+    closeSyncRecoverModal();
+    renderSyncState(result, false);
+    await Promise.all([refreshTodoData(), refreshSyncDevices()]);
+    showToast("同步账户已恢复");
+  } catch (error) {
+    showToast("恢复账户失败：" + (error.message || "请检查密钥与同步服务"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function formatDevicePlatform(value) {
+  return ({ WINDOWS: "Windows", MACOS: "macOS", WEB: "Web", ANDROID: "Android", IOS: "iOS" })[value] || value || "设备";
+}
+
+function formatDeviceSeen(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "尚未连接";
+  return "最近连接 " + date.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderSyncDevices(devices) {
+  const target = $("#syncDeviceList");
+  const activeDevices = Array.isArray(devices) ? devices.filter((device) => !device.revokedAt) : [];
+  if (!activeDevices.length) {
+    target.innerHTML = '<span class="sync-device-empty">尚未读取到已连接设备</span>';
+    return;
+  }
+  target.innerHTML = activeDevices.map((device) => {
+    const isMobile = device.platform === "ANDROID" || device.platform === "IOS";
+    const icon = isMobile
+      ? '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>'
+      : '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
+    const action = device.isCurrent
+      ? '<span class="sync-device-current">当前设备</span>'
+      : '<button type="button" class="sync-device-remove" data-device-id="' + escapeHtml(device.id) + '" data-device-name="' + escapeHtml(device.name) + '">移除</button>';
+    return '<div class="sync-device-item"><span class="sync-device-icon">' + icon +
+      '</span><div class="sync-device-info"><strong>' + escapeHtml(device.name || "未命名设备") +
+      '</strong><span>' + escapeHtml(formatDevicePlatform(device.platform) + " · " + formatDeviceSeen(device.lastSeenAt)) +
+      '</span></div>' + action + '</div>';
+  }).join("");
+  target.querySelectorAll(".sync-device-remove").forEach((button) => {
+    button.addEventListener("click", () => openRevokeDeviceModal({
+      id: button.dataset.deviceId,
+      name: button.dataset.deviceName,
+    }));
+  });
+}
+
+async function refreshSyncDevices() {
+  if (!syncState?.account?.enabled) return;
+  const button = $("#refreshSyncDevicesButton");
+  button.disabled = true;
+  try {
+    renderSyncDevices(await window.electronAPI.listSyncDevices());
+  } catch (error) {
+    $("#syncDeviceList").innerHTML = '<span class="sync-device-empty">读取失败，请检查同步服务</span>';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function openRevokeDeviceModal(device) {
+  pendingRevokeDevice = device;
+  $("#revokeDeviceSummary").textContent = "移除“" + (device.name || "这台设备") +
+    "”后，该设备需要重新配对才能继续同步。";
+  $("#revokeDeviceModal").classList.remove("hidden");
+}
+
+function closeRevokeDeviceModal() {
+  pendingRevokeDevice = null;
+  $("#revokeDeviceModal").classList.add("hidden");
+}
+
+async function confirmRevokeDevice() {
+  if (!pendingRevokeDevice?.id) return;
+  const button = $("#confirmRevokeDevice");
+  button.disabled = true;
+  try {
+    const devices = await window.electronAPI.revokeSyncDevice(pendingRevokeDevice.id);
+    closeRevokeDeviceModal();
+    renderSyncDevices(devices);
+    showToast("设备已移除");
+  } catch (error) {
+    showToast("移除设备失败：" + (error.message || "请稍后重试"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function stopPairingTimer() {
+  if (pairingTimer) clearInterval(pairingTimer);
+  pairingTimer = null;
+  pairingPollBusy = false;
+}
+
+function closePairingModal() {
+  stopPairingTimer();
+  pairingSession = null;
+  $("#syncPairingModal").classList.add("hidden");
+}
+
+function updatePairingRemaining() {
+  if (!pairingSession) return;
+  const remaining = Math.max(0, Math.ceil((new Date(pairingSession.expiresAt).getTime() - Date.now()) / 1000));
+  $("#pairingExpiresText").textContent = remaining
+    ? "剩余 " + Math.floor(remaining / 60) + ":" + String(remaining % 60).padStart(2, "0")
+    : "配对码已失效";
+  if (!remaining) {
+    $("#pairingStatusText").textContent = "配对码已失效，请重新生成";
+    stopPairingTimer();
+  }
+}
+
+async function pollPairingStatus() {
+  if (!pairingSession || pairingPollBusy) return;
+  pairingPollBusy = true;
+  try {
+    const result = await window.electronAPI.getPairingSessionStatus(pairingSession.sessionId);
+    if (result.status === "CLAIMED") {
+      $("#pairingStatusText").textContent = "手机已连接成功";
+      stopPairingTimer();
+      await refreshSyncDevices();
+      showToast("手机已成功连接");
+    } else if (result.status === "EXPIRED") {
+      $("#pairingStatusText").textContent = "配对码已失效，请重新生成";
+      stopPairingTimer();
+    }
+  } catch (_error) {
+    $("#pairingStatusText").textContent = "暂时无法确认配对状态，正在重试";
+  } finally {
+    pairingPollBusy = false;
+  }
+}
+
+async function generatePairingCode() {
+  stopPairingTimer();
+  const refreshButton = $("#refreshPairingCode");
+  refreshButton.disabled = true;
+  $("#pairingStatusText").textContent = "正在生成配对信息";
+  $("#pairingManualCode").textContent = "------";
+  try {
+    pairingSession = await window.electronAPI.createPairingSession({
+      platform: "ANDROID",
+      targetDeviceName: "Android 手机",
+    });
+    $("#pairingQrImage").src = pairingSession.qrImageDataUrl;
+    $("#pairingManualCode").textContent = pairingSession.manualCode;
+    $("#pairingStatusText").textContent = "等待手机确认";
+    updatePairingRemaining();
+    let ticks = 0;
+    pairingTimer = setInterval(() => {
+      updatePairingRemaining();
+      ticks += 1;
+      if (ticks % 2 === 0) pollPairingStatus();
+    }, 1000);
+  } catch (error) {
+    $("#pairingStatusText").textContent = "生成失败：" + (error.message || "请检查同步服务");
+  } finally {
+    refreshButton.disabled = false;
+  }
+}
+
+function openPairingModal() {
+  $("#syncPairingModal").classList.remove("hidden");
+  generatePairingCode();
+}
+
+function conflictDeadline(todo) {
+  if (!todo) return "无任务数据";
+  if (todo.deletedAt) return "该版本已删除";
+  if (todo.dueAt) return "截止 " + formatSyncTime(todo.dueAt);
+  if (todo.date) return "截止 " + todo.date + (todo.dueTime ? " " + todo.dueTime : "");
+  return "未设置截止时间";
+}
+
+function renderActiveConflict() {
+  const conflict = syncConflicts[activeConflictIndex];
+  if (!conflict) {
+    closeConflictModal();
+    return;
+  }
+  const local = conflict.localTodo || {};
+  const cloud = conflict.serverTodo || {};
+  $("#conflictProgress").textContent = "第 " + (activeConflictIndex + 1) + " 项，共 " + syncConflicts.length + " 项";
+  $("#conflictLocalTitle").value = local.text || "";
+  $("#conflictLocalDescription").value = local.desc || "";
+  $("#conflictLocalMeta").textContent = conflict.operation === "delete" ? "本机选择：删除任务" : conflictDeadline(local);
+  $("#conflictCloudTitle").textContent = cloud.title || (cloud.deletedAt ? "该任务已被删除" : "无云端版本");
+  $("#conflictCloudDescription").textContent = cloud.description || "无备注描述";
+  $("#conflictCloudMeta").textContent = conflictDeadline(cloud);
+  const canKeepLocal = !!local.text || conflict.operation === "delete";
+  $("#keepLocalConflict").disabled = !canKeepLocal;
+}
+
+function closeConflictModal() {
+  syncConflicts = [];
+  activeConflictIndex = 0;
+  $("#syncConflictModal").classList.add("hidden");
+}
+
+async function openConflictModal() {
+  try {
+    syncConflicts = await window.electronAPI.getSyncConflicts();
+    activeConflictIndex = 0;
+    if (!syncConflicts.length) {
+      showToast("当前没有需要处理的同步冲突");
+      renderSyncState(await window.electronAPI.getSyncState(), false);
+      return;
+    }
+    $("#syncConflictModal").classList.remove("hidden");
+    renderActiveConflict();
+  } catch (error) {
+    showToast("读取冲突失败：" + (error.message || "请稍后重试"));
+  }
+}
+
+async function resolveActiveConflict(resolution) {
+  const conflict = syncConflicts[activeConflictIndex];
+  if (!conflict) return;
+  const buttons = [$("#useCloudConflict"), $("#keepLocalConflict")];
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const result = await window.electronAPI.resolveSyncConflict({
+      entityId: conflict.entityId,
+      resolution,
+      title: $("#conflictLocalTitle").value,
+      description: $("#conflictLocalDescription").value,
+    });
+    syncConflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
+    activeConflictIndex = 0;
+    renderSyncState(result.state, false);
+    await refreshTodoData();
+    if (syncConflicts.length) renderActiveConflict();
+    else {
+      closeConflictModal();
+      showToast("同步冲突已处理");
+    }
+  } catch (error) {
+    showToast("处理冲突失败：" + (error.message || "请稍后重试"));
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
   }
 }
 
@@ -1115,6 +1414,54 @@ async function exportDataBackup() {
   }
 }
 
+function closeRestoreDataModal() {
+  pendingRestoreBackup = null;
+  $("#restoreDataModal").classList.add("hidden");
+}
+
+async function chooseDataBackupForRestore() {
+  const button = $("#restoreDataBackupBtn");
+  button.disabled = true;
+  try {
+    const result = await window.electronAPI.selectDataBackup();
+    if (!result || result.cancelled) return;
+    pendingRestoreBackup = result;
+    const exportedAt = new Date(result.exportedAt);
+    const timeText = Number.isNaN(exportedAt.getTime())
+      ? "时间未知"
+      : exportedAt.toLocaleString("zh-CN", { hour12: false });
+    const versionText = result.appVersion ? "，由 MyTodo " + result.appVersion + " 导出" : "";
+    $("#restoreDataSummary").textContent =
+      "该备份包含 " + Number(result.todoCount || 0) + " 项待办，导出于 " + timeText + versionText + "。";
+    $("#restoreDataModal").classList.remove("hidden");
+    $("#confirmRestoreData").focus();
+  } catch (error) {
+    showToast("无法读取备份：" + (error.message || "请检查所选文件"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function confirmRestoreData() {
+  if (!pendingRestoreBackup?.filePath) return closeRestoreDataModal();
+  const button = $("#confirmRestoreData");
+  button.disabled = true;
+  try {
+    const result = await window.electronAPI.restoreDataBackup(pendingRestoreBackup.filePath);
+    appConfig = result.config || appConfig;
+    applyConfigToSettings();
+    closeRestoreDataModal();
+    await refreshTodoData();
+    renderStorageStatus(await window.electronAPI.getStorageStatus());
+    renderSyncState(await window.electronAPI.getSyncState(), false);
+    showToast("已恢复 " + Number(result.todoCount || 0) + " 项待办，原数据已自动备份");
+  } catch (error) {
+    showToast("恢复失败：" + (error.message || "当前数据未被替换"));
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function refreshTodoData() {
   if (refreshPending) return;
   refreshPending = true;
@@ -1142,6 +1489,7 @@ function bindNavigation() {
       $$(".settings-section").forEach((section) => {
         section.classList.toggle("hidden", section.id !== button.dataset.setting);
       });
+      if (button.dataset.setting === "syncSetting") refreshSyncDevices();
     });
   });
 }
@@ -1294,23 +1642,52 @@ function bindSettings() {
   if (typeof window.electronAPI.onUpdateStatus === "function") {
     window.electronAPI.onUpdateStatus((state) => renderUpdateState(state, true));
   }
-  if (typeof window.electronAPI.onSyncStatus === "function") {
-    window.electronAPI.onSyncStatus((state) => renderSyncState(state, true));
+  if ($("#syncSetting")) {
+    if (typeof window.electronAPI.onSyncStatus === "function") {
+      window.electronAPI.onSyncStatus((state) => renderSyncState(state, true));
+    }
+    $("#enableSyncButton").addEventListener("click", openSyncEnableModal);
+    $("#recoverSyncButton").addEventListener("click", openSyncRecoverModal);
+    $("#cancelEnableSync").addEventListener("click", closeSyncEnableModal);
+    $("#confirmEnableSync").addEventListener("click", confirmEnableSync);
+    $("#syncNowButton").addEventListener("click", runManualSync);
+    $("#syncConflictButton").addEventListener("click", openConflictModal);
+    $("#pairPhoneButton").addEventListener("click", openPairingModal);
+    $("#refreshSyncDevicesButton").addEventListener("click", refreshSyncDevices);
+    $("#closeSyncRecover").addEventListener("click", closeSyncRecoverModal);
+    $("#cancelRecoverSync").addEventListener("click", closeSyncRecoverModal);
+    $("#confirmRecoverSync").addEventListener("click", confirmRecoverSync);
+    $("#closeSyncPairing").addEventListener("click", closePairingModal);
+    $("#finishPairing").addEventListener("click", closePairingModal);
+    $("#refreshPairingCode").addEventListener("click", generatePairingCode);
+    $("#cancelRevokeDevice").addEventListener("click", closeRevokeDeviceModal);
+    $("#confirmRevokeDevice").addEventListener("click", confirmRevokeDevice);
+    $("#closeSyncConflict").addEventListener("click", closeConflictModal);
+    $("#useCloudConflict").addEventListener("click", () => resolveActiveConflict("cloud"));
+    $("#keepLocalConflict").addEventListener("click", () => resolveActiveConflict("local"));
+    $("#syncEnableModal").addEventListener("mousedown", (event) => {
+      if (event.target === $("#syncEnableModal")) closeSyncEnableModal();
+    });
+    $("#syncRecoverModal").addEventListener("mousedown", (event) => {
+      if (event.target === $("#syncRecoverModal")) closeSyncRecoverModal();
+    });
+    $("#syncPairingModal").addEventListener("mousedown", (event) => {
+      if (event.target === $("#syncPairingModal")) closePairingModal();
+    });
+    $("#revokeDeviceModal").addEventListener("mousedown", (event) => {
+      if (event.target === $("#revokeDeviceModal")) closeRevokeDeviceModal();
+    });
+    $("#syncConflictModal").addEventListener("mousedown", (event) => {
+      if (event.target === $("#syncConflictModal")) closeConflictModal();
+    });
+    $("#copyRecoveryKey").addEventListener("click", () => {
+      window.electronAPI.copyText($("#recoveryKeyValue").textContent);
+      showToast("恢复密钥已复制");
+    });
+    $("#closeRecoveryKey").addEventListener("click", () => {
+      $("#recoveryKeyModal").classList.add("hidden");
+    });
   }
-  $("#enableSyncButton").addEventListener("click", openSyncEnableModal);
-  $("#cancelEnableSync").addEventListener("click", closeSyncEnableModal);
-  $("#confirmEnableSync").addEventListener("click", confirmEnableSync);
-  $("#syncNowButton").addEventListener("click", runManualSync);
-  $("#syncEnableModal").addEventListener("mousedown", (event) => {
-    if (event.target === $("#syncEnableModal")) closeSyncEnableModal();
-  });
-  $("#copyRecoveryKey").addEventListener("click", () => {
-    window.electronAPI.copyText($("#recoveryKeyValue").textContent);
-    showToast("恢复密钥已复制");
-  });
-  $("#closeRecoveryKey").addEventListener("click", () => {
-    $("#recoveryKeyModal").classList.add("hidden");
-  });
   $("#notificationSoundCheck").addEventListener("change", (event) => {
     saveConfigPatch({ notificationSound: event.target.checked });
   });
@@ -1329,6 +1706,12 @@ function bindSettings() {
     openSupportDirectory(event.currentTarget, window.electronAPI.openDataDirectory, "无法打开数据目录");
   });
   $("#exportDataBackupBtn").addEventListener("click", exportDataBackup);
+  $("#restoreDataBackupBtn").addEventListener("click", chooseDataBackupForRestore);
+  $("#cancelRestoreData").addEventListener("click", closeRestoreDataModal);
+  $("#confirmRestoreData").addEventListener("click", confirmRestoreData);
+  $("#restoreDataModal").addEventListener("mousedown", (event) => {
+    if (event.target === $("#restoreDataModal")) closeRestoreDataModal();
+  });
 }
 
 async function toggleMainWindowMaximize() {
@@ -1350,7 +1733,17 @@ function bindWindowEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (!$("#recoveryKeyModal").classList.contains("hidden")) {
+      if (!$("#restoreDataModal").classList.contains("hidden")) {
+        closeRestoreDataModal();
+      } else if (!$("#syncConflictModal").classList.contains("hidden")) {
+        closeConflictModal();
+      } else if (!$("#syncPairingModal").classList.contains("hidden")) {
+        closePairingModal();
+      } else if (!$("#syncRecoverModal").classList.contains("hidden")) {
+        closeSyncRecoverModal();
+      } else if (!$("#revokeDeviceModal").classList.contains("hidden")) {
+        closeRevokeDeviceModal();
+      } else if (!$("#recoveryKeyModal").classList.contains("hidden")) {
         $("#recoveryKeyModal").classList.add("hidden");
       } else if (!$("#updateAvailableModal").classList.contains("hidden")) {
         closeUpdateAvailableModal();

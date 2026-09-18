@@ -1,7 +1,7 @@
 const { app, dialog, ipcMain } = require("electron");
 const { getGlobalConfig, setGlobalConfig } = require("./config");
 const { getDataLocation, migrateDataDirectory } = require("./dataLocation");
-const { getReminderServiceStatus } = require("./reminderScheduler");
+const { getReminderServiceStatus, refreshReminderSchedule } = require("./reminderScheduler");
 const { formatLocalDate } = require("../shared/recurrence");
 const supportTools = require("./supportTools");
 const syncAccount = require("./syncAccount");
@@ -123,13 +123,39 @@ function registerIpcHandlers() {
   ipcMain.handle("get-storage-status", async () => supportTools.getStorageStatus());
   ipcMain.handle("get-sync-state", async () => syncManager.getSyncState());
   ipcMain.handle("enable-sync", async (_event, options) => syncManager.enableSync(options));
+  ipcMain.handle("recover-sync-account", async (_event, options) => {
+    return syncManager.recoverSyncAccount(options);
+  });
   ipcMain.handle("sync-now", async () => syncManager.syncNow({ manual: true }));
+  ipcMain.handle("create-pairing-session", async (_event, options) => {
+    return syncManager.createPairingSession(options);
+  });
+  ipcMain.handle("get-pairing-session-status", async (_event, sessionId) => {
+    return syncManager.getPairingSessionStatus(sessionId);
+  });
+  ipcMain.handle("list-sync-devices", async () => syncManager.listSyncDevices());
+  ipcMain.handle("revoke-sync-device", async (_event, deviceId) => {
+    return syncManager.revokeSyncDevice(deviceId);
+  });
+  ipcMain.handle("get-sync-conflicts", async () => syncManager.getSyncConflicts());
+  ipcMain.handle("resolve-sync-conflict", async (_event, options) => {
+    return syncManager.resolveSyncConflict(options);
+  });
   ipcMain.handle("check-for-updates", async () => updateManager.checkForUpdates({ manual: true }));
   ipcMain.handle("download-update", async () => updateManager.downloadUpdate());
   ipcMain.handle("get-data-location", async () => getDataLocation());
   ipcMain.handle("choose-data-location", chooseAndMigrateDataDirectory);
   ipcMain.handle("open-data-directory", supportTools.openDataDirectory);
   ipcMain.handle("export-data-backup", supportTools.exportDataBackup);
+  ipcMain.handle("select-data-backup", supportTools.selectDataBackup);
+  ipcMain.handle("restore-data-backup", async (_event, filePath) => {
+    const result = supportTools.restoreDataBackup(filePath);
+    updateManager.setAutoCheckEnabled(result.config.autoCheckUpdates);
+    windows.refreshReminderWindowPlacement();
+    refreshReminderSchedule(new Date(), "data-restore");
+    windows.notifyTodoDataChanged();
+    return result;
+  });
   ipcMain.handle("open-log-directory", supportTools.openLogDirectory);
   ipcMain.handle("toggle-float-win", async () => windows.toggleFloatWindow());
   ipcMain.handle("move-float-win", async (evt, deltaX, deltaY) => {

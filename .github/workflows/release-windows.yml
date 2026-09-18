@@ -56,24 +56,14 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $asset = "dist/MyTodo-Setup-$version.exe"
           $assets = @($asset, "$asset.blockmap", "dist/latest.yml")
-          $notes = @"
-          ## MyTodo $version
-
-          ### 本次修复
-          - 修复从早期版本升级后，任务栏仍可能显示 Electron 默认图标的问题。
-          - 升级时会刷新现有桌面和开始菜单快捷方式，减少 Windows 继续沿用旧图标缓存的情况。
-          - 完善 Windows“已安装的应用”登记，安装后可从系统设置中找到 MyTodo 并执行卸载。
-          - 调整安装位置页对齐，标题、安装信息和操作按钮使用统一边界。
-
-          ### 安装与升级
-          - 下载 `MyTodo-Setup-$version.exe` 后按向导安装即可。
-          - 从旧版本升级会保留现有任务、提醒设置、同步队列和数据目录。
-          - Release 中的 `latest.yml` 和 `.blockmap` 仅供应用自动更新使用，手动安装只需下载 `.exe`。
-          - 少数已安装过早期版本的电脑若仍显示旧任务栏图标，取消固定后从开始菜单重新固定即可；若“已安装的应用”未立即刷新，请重新登录 Windows 或重启一次。
-
-          ### 已知提示
-          - 安装包暂未进行代码签名，Windows 可能显示“未知发布者”提示。
-          "@
+          $changelog = Get-Content -LiteralPath "CHANGELOG.md" -Raw
+          $escapedVersion = [regex]::Escape($version)
+          $pattern = "(?ms)^##\s+$escapedVersion\s+.*?\r?\n(?<notes>.*?)(?=^##\s+|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            throw "CHANGELOG.md does not contain release notes for $version"
+          }
+          $notes = "## MyTodo $version`r`n`r`n" + $match.Groups["notes"].Value.Trim()
           $notesPath = Join-Path $env:RUNNER_TEMP "mytodo-release-notes.md"
           Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
           $releaseExists = gh release view $tag --json id --jq .id 2>$null

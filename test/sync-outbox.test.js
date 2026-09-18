@@ -82,3 +82,28 @@ test("damaged sync outbox enters read-only protection", (t) => {
     payload: { title: "Must not overwrite" },
   }), /只读保护/);
 });
+
+test("blocked conflicts can be inspected and removed by entity", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-outbox-conflict-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const outbox = loadOutbox(directory);
+  outbox.loadSyncOutbox();
+  const uuid = "1a132ac7-f448-4211-a4e9-cf51b2dd5a99";
+  const mutation = outbox.enqueueTodoUpsert({
+    uuid,
+    cloudRevision: 1,
+    payload: { title: "Local" },
+  });
+  outbox.markMutationBlocked(mutation.mutationId, "REVISION_CONFLICT", {
+    title: "Cloud",
+    revision: 2,
+  });
+
+  const conflicts = outbox.getBlockedMutations();
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].serverEntity.title, "Cloud");
+  conflicts[0].serverEntity.title = "Changed outside";
+  assert.equal(outbox.getBlockedMutations()[0].serverEntity.title, "Cloud");
+  assert.equal(outbox.removeEntityMutations(uuid), 1);
+  assert.equal(outbox.getBlockedMutations().length, 0);
+});

@@ -217,3 +217,14 @@ test("scheduler presents an incomplete overdue task once for the current day", (
   assert.equal(presented[0].reason, "已逾期 1 天");
   assert.deepEqual(marks, [[{ id: 1, key: "overdue:2026-09-03" }]]);
 });
+
+test("resume refresh clears stale precision state and rebuilds the upcoming queue", () => {
+  const futureTask = task({ date: "2030-09-03" });
+  const { scheduler } = loadScheduler([futureTask]);
+  scheduler.startReminderScheduler({ showReminder: () => true });
+  scheduler.refreshReminderSchedule(new Date(2030, 8, 3, 8, 59, 20), "resume");
+  const status = scheduler.getReminderServiceStatus(new Date(2030, 8, 3, 8, 59, 20));
+  assert.equal(status.lastRecoveryReason, "resume");
+  assert.equal(status.queuedReminderCount, 1);
+  scheduler.stopReminderScheduler();
+});

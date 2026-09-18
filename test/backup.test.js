@@ -7,6 +7,9 @@ const {
   BACKUP_FORMAT,
   BACKUP_FORMAT_VERSION,
   createDataBackup,
+  getDataBackupSummary,
+  parseDataBackup,
+  readDataBackup,
 } = require("../src/main/backup");
 
 test("data export contains normalized state and original recovery files", (t) => {
@@ -47,4 +50,26 @@ test("data export contains normalized state and original recovery files", (t) =>
   assert.deepEqual(backup.data.config, { autoStart: true });
   assert.equal(backup.originalFiles["todo-store.json"], "{\"list\":[]}");
   assert.equal(backup.originalFiles["sync-account.json"], undefined);
+
+  const selected = readDataBackup(destinationPath);
+  assert.equal(selected.filePath, destinationPath);
+  assert.deepEqual(getDataBackupSummary(selected.payload), {
+    appVersion: "2.0.0",
+    exportedAt: backup.exportedAt,
+    todoCount: 1,
+  });
+});
+
+test("data restore rejects unrelated, unsupported, and malformed backups", () => {
+  assert.throws(() => parseDataBackup("not-json"), /有效的 JSON/);
+  assert.throws(() => parseDataBackup(JSON.stringify({ format: "other" })), /不是 MyTodo/);
+  assert.throws(() => parseDataBackup(JSON.stringify({
+    format: BACKUP_FORMAT,
+    formatVersion: 99,
+  })), /暂不受当前 MyTodo 支持/);
+  assert.throws(() => parseDataBackup(JSON.stringify({
+    format: BACKUP_FORMAT,
+    formatVersion: BACKUP_FORMAT_VERSION,
+    data: { todoStore: { list: [{ text: "" }] }, config: {} },
+  })), /无效任务/);
 });

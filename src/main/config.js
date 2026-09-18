@@ -141,6 +141,20 @@ function setGlobalConfig(cfg, options = {}) {
   return cloneConfig();
 }
 
+function replaceGlobalConfig(cfg, options = {}) {
+  if (!isConfigRecord(cfg)) throw new Error("备份中的应用设置无效");
+  const previousConfig = globalConfig;
+  globalConfig = normalizeGlobalConfig({ ...defaultConfig, ...cfg });
+  try {
+    saveGlobalConfig(options);
+  } catch (error) {
+    globalConfig = previousConfig;
+    throw error;
+  }
+  configStatus = { state: "ok", message: "应用设置正常" };
+  return cloneConfig();
+}
+
 function markSummarySent(kind, key) {
   const summaryKey = String(key || "");
   if (!summaryKey || !["daily", "weekly"].includes(kind)) return false;
@@ -177,6 +191,7 @@ module.exports = {
   loadGlobalConfig,
   markSummarySent,
   normalizeFloatBounds,
+  replaceGlobalConfig,
   setFloatBounds,
   setGlobalConfig,
   setMainWindowBounds,

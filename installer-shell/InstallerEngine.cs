@@ -51,6 +51,13 @@ internal sealed class InstallerEngine : IDisposable
             installDirectory = ReadRegistryValue(ProductRegistryKey, "InstallLocation");
         }
 
+        var runningInstallDirectory = FindRunningInstallDirectory();
+        if (!string.IsNullOrWhiteSpace(runningInstallDirectory))
+        {
+            installDirectory = runningInstallDirectory;
+            installedVersion = GetInstalledFileVersion(runningInstallDirectory, installedVersion);
+        }
+
         installDirectory = string.IsNullOrWhiteSpace(installDirectory)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", ProductName)
             : installDirectory;
@@ -143,6 +150,7 @@ internal sealed class InstallerEngine : IDisposable
                 WorkingDirectory = _workingDirectory,
             };
             startInfo.ArgumentList.Add("/S");
+            startInfo.ArgumentList.Add("--shell-managed");
             if (Snapshot.Mode == InstallerMode.InAppUpdate)
             {
                 startInfo.ArgumentList.Add("--updated");
@@ -279,6 +287,56 @@ internal sealed class InstallerEngine : IDisposable
     {
         using var key = Registry.CurrentUser.OpenSubKey(keyPath);
         return key?.GetValue(name)?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private static string FindRunningInstallDirectory()
+    {
+        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var process in Process.GetProcessesByName(ProductName))
+        {
+            using (process)
+            {
+                try
+                {
+                    var executable = process.MainModule?.FileName;
+                    var directory = string.IsNullOrWhiteSpace(executable)
+                        ? string.Empty
+                        : Path.GetDirectoryName(executable) ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(directory)
+                        || !File.Exists(Path.Combine(directory, UninstallerFileName)))
+                    {
+                        continue;
+                    }
+                    directories.Add(Path.GetFullPath(directory));
+                }
+                catch (InvalidOperationException)
+                {
+                    // The process exited while its executable path was inspected.
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    // Fall back to the registered location if Windows denies access.
+                }
+            }
+        }
+
+        return directories.Count == 1 ? directories.First() : string.Empty;
+    }
+
+    private static string GetInstalledFileVersion(string directory, string fallback)
+    {
+        try
+        {
+            var executable = Path.Combine(directory, $"{ProductName}.exe");
+            var version = FileVersionInfo.GetVersionInfo(executable).FileVersion?.Trim();
+            return string.IsNullOrWhiteSpace(version) ? fallback : version;
+        }
+        catch (Exception error) when (error is FileNotFoundException
+            or System.ComponentModel.Win32Exception
+            or ArgumentException)
+        {
+            return fallback;
+        }
     }
 
     private void EnsureUninstallRegistration()

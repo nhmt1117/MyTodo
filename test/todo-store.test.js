@@ -172,3 +172,45 @@ test("unreadable task data enters read-only protection without overwriting files
   assert.equal(fs.readFileSync(primaryPath, "utf8"), "{broken-primary");
   assert.equal(fs.readFileSync(backupPath, "utf8"), "{broken-backup");
 });
+
+test("restoring a backup replaces tasks, recovers read-only storage, and records sync changes", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-restore-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const existingUuid = "8ec41df8-89f7-4df3-8e3d-0badc30cfe72";
+  const restoredUuid = "e5895547-ee55-44e9-a86d-e7a61a32669f";
+  fs.writeFileSync(path.join(directory, "todo-store.json"), JSON.stringify({
+    schemaVersion: 3,
+    list: [{ id: 1, uuid: existingUuid, text: "Cloud task", cloudRevision: 7 }],
+    maxId: 2,
+  }));
+
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  const mutations = [];
+  store.setTodoMutationListener((operation, item) => mutations.push({ operation, item }));
+  const result = store.restoreTodoList([{
+    id: 4,
+    uuid: restoredUuid,
+    text: "Restored task",
+    date: "2026-09-18",
+  }], new Date("2026-09-18T10:00:00.000Z"));
+
+  assert.deepEqual(result.map((item) => item.text), ["Restored task"]);
+  const snapshot = store.getTodoSyncSnapshot();
+  assert.equal(snapshot.length, 2);
+  assert.equal(snapshot.find((item) => item.uuid === restoredUuid).syncState, "local");
+  const tombstone = snapshot.find((item) => item.uuid === existingUuid);
+  assert.equal(tombstone.deletedAt, "2026-09-18T10:00:00.000Z");
+  assert.equal(tombstone.syncState, "pending");
+  assert.deepEqual(mutations.map((entry) => entry.operation), ["upsert", "delete"]);
+
+  fs.writeFileSync(path.join(directory, "todo-store.json"), "{broken-primary", "utf8");
+  fs.writeFileSync(path.join(directory, "todo-store.json.bak"), "{broken-backup", "utf8");
+  const protectedStore = loadStore(directory);
+  t.mock.method(console, "error", () => {});
+  protectedStore.loadTodoFile();
+  assert.equal(protectedStore.getTodoStorageStatus().readOnly, true);
+  protectedStore.restoreTodoList([{ id: 1, text: "Recovered from backup" }]);
+  assert.equal(protectedStore.getTodoStorageStatus().readOnly, false);
+  assert.equal(protectedStore.getTodoList()[0].text, "Recovered from backup");
+});

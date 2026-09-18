@@ -1,6 +1,7 @@
 const defaultAccountStore = require("./syncAccount");
 const defaultOutbox = require("./syncOutbox");
 const defaultTodoStore = require("./todoStore");
+const QRCode = require("qrcode");
 
 const SUCCESS_INTERVAL_MS = 60_000;
 const FIRST_RETRY_MS = 30_000;
@@ -61,6 +62,7 @@ function createSyncManager(options = {}) {
   const setTimer = options.setTimeout || setTimeout;
   const clearTimer = options.clearTimeout || clearTimeout;
   const requestTimeoutMs = Number(options.requestTimeoutMs) || REQUEST_TIMEOUT_MS;
+  const qrEncoder = options.qrEncoder || QRCode;
 
   let started = false;
   let timer = null;
@@ -259,26 +261,203 @@ function createSyncManager(options = {}) {
     const serverUrl = accountStore.normalizeServerUrl(details.serverUrl);
     const deviceName = String(details.deviceName || accountStore.getDefaultDeviceName()).trim();
     publish({ phase: "connecting", message: "正在创建同步账户", lastError: "", manual: true });
-    const registration = await request(serverUrl, "/auth/register-device", {
+    try {
+      const registration = await request(serverUrl, "/auth/register-device", {
+        method: "POST",
+        body: { platform: "WINDOWS", deviceName },
+      });
+      accountStore.registerSyncAccount({
+        serverUrl,
+        userId: registration.userId,
+        deviceId: registration.device?.id,
+        deviceName: registration.device?.name || deviceName,
+        refreshToken: registration.refreshToken,
+        recoveryKey: registration.recoveryKey,
+        initialUploadConfirmed: true,
+      });
+      rememberAccessToken(registration);
+      queueExistingTodos();
+      const syncState = await syncNow({ manual: true });
+      return {
+        ...syncState,
+        recoveryKey: String(registration.recoveryKey || ""),
+      };
+    } catch (error) {
+      publish({
+        phase: "disabled",
+        message: "创建同步账户失败",
+        lastError: errorMessage(error),
+        manual: true,
+      });
+      throw error;
+    }
+  }
+
+  async function recoverSyncAccount(details = {}) {
+    if (details.confirmExistingUpload !== true) {
+      throw new Error("请先确认合并本机现有待办");
+    }
+    if (accountStore.getSyncAccount().enabled) {
+      throw new Error("当前电脑已经启用多端同步");
+    }
+    if (typeof accountStore.canStoreSyncCredentials === "function" &&
+      !accountStore.canStoreSyncCredentials()) {
+      throw new Error("Windows 安全存储当前不可用，暂时不能恢复同步账户");
+    }
+    const recoveryKey = String(details.recoveryKey || "").trim();
+    if (recoveryKey.length < 32) throw new Error("请输入有效的账户恢复密钥");
+    const serverUrl = accountStore.normalizeServerUrl(details.serverUrl);
+    const deviceName = String(details.deviceName || accountStore.getDefaultDeviceName()).trim();
+    publish({ phase: "connecting", message: "正在恢复同步账户", lastError: "", manual: true });
+    try {
+      const registration = await request(serverUrl, "/auth/recover", {
+        method: "POST",
+        body: { recoveryKey, platform: "WINDOWS", deviceName },
+      });
+      accountStore.registerSyncAccount({
+        serverUrl,
+        userId: registration.userId,
+        deviceId: registration.device?.id,
+        deviceName: registration.device?.name || deviceName,
+        refreshToken: registration.refreshToken,
+        recoveryKey,
+        initialUploadConfirmed: true,
+      });
+      rememberAccessToken(registration);
+      queueExistingTodos();
+      return syncNow({ manual: true });
+    } catch (error) {
+      publish({
+        phase: "disabled",
+        message: "恢复同步账户失败",
+        lastError: errorMessage(error),
+        manual: true,
+      });
+      throw error;
+    }
+  }
+
+  async function createPairingSession(details = {}) {
+    const platform = String(details.platform || "ANDROID").toUpperCase();
+    if (!["ANDROID", "IOS"].includes(platform)) throw new Error("不支持的手机平台");
+    const response = await authorizedRequest("/pairing-sessions", {
       method: "POST",
-      body: { platform: "WINDOWS", deviceName },
+      body: {
+        targetPlatform: platform,
+        targetDeviceName: String(details.targetDeviceName || "我的手机").trim() || "我的手机",
+      },
     });
-    accountStore.registerSyncAccount({
-      serverUrl,
-      userId: registration.userId,
-      deviceId: registration.device?.id,
-      deviceName: registration.device?.name || deviceName,
-      refreshToken: registration.refreshToken,
-      recoveryKey: registration.recoveryKey,
-      initialUploadConfirmed: true,
-    });
-    rememberAccessToken(registration);
-    queueExistingTodos();
-    const syncState = await syncNow({ manual: true });
+    const account = accountStore.getSyncAccount();
+    const separator = String(response.qrPayload || "").includes("?") ? "&" : "?";
+    const qrPayload = `${response.qrPayload || "mytodo://pair"}${separator}` +
+      `server=${encodeURIComponent(account.serverUrl)}`;
     return {
-      ...syncState,
-      recoveryKey: String(registration.recoveryKey || ""),
+      ...response,
+      qrPayload,
+      qrImageDataUrl: await qrEncoder.toDataURL(qrPayload, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 220,
+        color: { dark: "#202938", light: "#ffffff" },
+      }),
     };
+  }
+
+  function getPairingSessionStatus(sessionId) {
+    const id = String(sessionId || "").trim();
+    if (!id) throw new Error("配对会话无效");
+    return authorizedRequest(`/pairing-sessions/${encodeURIComponent(id)}`);
+  }
+
+  function listSyncDevices() {
+    return authorizedRequest("/auth/devices");
+  }
+
+  async function revokeSyncDevice(deviceId) {
+    const account = accountStore.getSyncAccount();
+    const id = String(deviceId || "").trim().toLowerCase();
+    if (!id) throw new Error("设备信息无效");
+    if (id === account.deviceId) throw new Error("不能在当前设备上移除自身");
+    await authorizedRequest(`/auth/devices/${encodeURIComponent(id)}`, { method: "DELETE" });
+    return listSyncDevices();
+  }
+
+  function getSyncConflicts() {
+    const localById = new Map(todoStore.getTodoSyncSnapshot()
+      .map((todo) => [String(todo.uuid || "").toLowerCase(), todo]));
+    return outbox.getBlockedMutations()
+      .filter((item) => item.blockedReason.includes("CONFLICT") ||
+        ["ENTITY_DELETED", "ENTITY_NOT_FOUND"].includes(item.blockedReason))
+      .map((item) => ({
+        mutationId: item.mutationId,
+        entityId: item.entityId,
+        operation: item.operation,
+        reason: item.blockedReason,
+        localTodo: localById.get(item.entityId) || null,
+        serverTodo: item.serverEntity || null,
+      }));
+  }
+
+  async function resolveSyncConflict(details = {}) {
+    const entityId = String(details.entityId || "").trim().toLowerCase();
+    const resolution = String(details.resolution || "");
+    const conflict = outbox.getBlockedMutations().find((item) => item.entityId === entityId);
+    if (!conflict) throw new Error("该同步冲突已不存在");
+    if (!["local", "cloud"].includes(resolution)) throw new Error("请选择冲突处理方式");
+
+    const serverTodo = conflict.serverEntity && typeof conflict.serverEntity === "object"
+      ? conflict.serverEntity
+      : null;
+    const serverRevision = Number(serverTodo?.revision ?? conflict.baseRevision);
+    outbox.removeEntityMutations(entityId);
+
+    if (resolution === "cloud") {
+      if (serverTodo) {
+        todoStore.applyCloudTodo(
+          entityId,
+          serverTodo,
+          serverRevision,
+          serverTodo.deletedAt ? "delete" : "upsert",
+        );
+      } else {
+        todoStore.applyCloudTodo(
+          entityId,
+          { deletedAt: new Date().toISOString() },
+          serverRevision,
+          "delete",
+        );
+      }
+    } else {
+      const localTodo = todoStore.getTodoSyncSnapshot().find((todo) => todo.uuid === entityId);
+      if (!localTodo) throw new Error("本机待办已不存在");
+      const shouldRecreate = conflict.operation === "upsert" &&
+        (conflict.blockedReason === "ENTITY_DELETED" || !serverTodo);
+      const resolved = todoStore.prepareTodoConflictResolution(
+        entityId,
+        serverRevision,
+        { text: details.title, desc: details.description },
+        { recreate: shouldRecreate },
+      );
+      if (!resolved) throw new Error("无法保存本机版本");
+      if (conflict.operation === "delete") {
+        outbox.enqueueTodoDelete({ uuid: resolved.uuid, cloudRevision: resolved.cloudRevision });
+      } else {
+        outbox.enqueueTodoUpsert({
+          uuid: resolved.uuid,
+          cloudRevision: resolved.cloudRevision,
+          payload: buildTodoSyncPayload(resolved),
+        });
+      }
+    }
+
+    notifyTodoDataChanged();
+    publish({
+      phase: getSyncConflicts().length ? "attention" : "idle",
+      message: getSyncConflicts().length ? "部分待办需要处理同步冲突" : "冲突已处理",
+      lastError: "",
+    });
+    if (resolution === "local") await syncNow({ manual: true });
+    return { state: getState(), conflicts: getSyncConflicts() };
   }
 
   function mutationBatch() {
@@ -469,8 +648,15 @@ function createSyncManager(options = {}) {
 
   return {
     captureTodoMutation,
+    createPairingSession,
     enableSync,
+    getPairingSessionStatus,
+    getSyncConflicts,
     getSyncState: getState,
+    listSyncDevices,
+    recoverSyncAccount,
+    resolveSyncConflict,
+    revokeSyncDevice,
     startSyncManager,
     stopSyncManager,
     syncNow,

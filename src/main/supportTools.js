@@ -1,8 +1,16 @@
 const { app, dialog, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
-const { createDataBackup } = require("./backup");
-const { getConfigStatus, getGlobalConfig } = require("./config");
+const {
+  createDataBackup,
+  getDataBackupSummary,
+  readDataBackup,
+} = require("./backup");
+const {
+  getConfigStatus,
+  getGlobalConfig,
+  replaceGlobalConfig,
+} = require("./config");
 const {
   getDataLocation,
   getDataLocationStatus,
@@ -53,6 +61,10 @@ function getBackupFileName(now = new Date()) {
   return `MyTodo-Backup-${stamp}.json`;
 }
 
+function getPreRestoreBackupFileName(now = new Date()) {
+  return getBackupFileName(now).replace("MyTodo-Backup-", "MyTodo-Before-Restore-");
+}
+
 async function exportDataBackup() {
   const location = getDataLocation();
   const selection = await dialog.showSaveDialog({
@@ -70,6 +82,60 @@ async function exportDataBackup() {
     config: getGlobalConfig(),
   });
   return { cancelled: false, ...result };
+}
+
+async function selectDataBackup() {
+  const selection = await dialog.showOpenDialog({
+    title: "选择 MyTodo 数据备份",
+    defaultPath: app.getPath("documents"),
+    properties: ["openFile"],
+    filters: [{ name: "MyTodo 数据备份", extensions: ["json"] }],
+  });
+  if (selection.canceled || !selection.filePaths[0]) return { cancelled: true };
+
+  const backup = readDataBackup(selection.filePaths[0]);
+  return {
+    cancelled: false,
+    filePath: backup.filePath,
+    ...getDataBackupSummary(backup.payload),
+  };
+}
+
+function restoreDataBackup(filePath) {
+  const backup = readDataBackup(filePath);
+  const location = getDataLocation();
+  const previousConfig = getGlobalConfig();
+  const safetyBackupPath = path.join(
+    location.directory,
+    "Backups",
+    getPreRestoreBackupFileName(),
+  );
+
+  createDataBackup({
+    destinationPath: safetyBackupPath,
+    dataDirectory: location.directory,
+    appVersion: app.getVersion(),
+    todos: todoStore.getTodoList(),
+    config: previousConfig,
+  });
+
+  try {
+    const config = replaceGlobalConfig(backup.payload.data.config);
+    const todos = todoStore.restoreTodoList(backup.payload.data.todoStore.list);
+    return {
+      cancelled: false,
+      config,
+      safetyBackupPath,
+      todoCount: todos.length,
+    };
+  } catch (error) {
+    try {
+      replaceGlobalConfig(previousConfig);
+    } catch (rollbackError) {
+      console.error("恢复失败后回滚应用设置失败", rollbackError);
+    }
+    throw error;
+  }
 }
 
 async function showStartupStorageNotice() {
@@ -93,8 +159,11 @@ async function showStartupStorageNotice() {
 module.exports = {
   exportDataBackup,
   getBackupFileName,
+  getPreRestoreBackupFileName,
   getStorageStatus,
   openDataDirectory: () => openDirectory(getDataLocation().directory),
   openLogDirectory: () => openDirectory(getLogDirectory()),
+  restoreDataBackup,
+  selectDataBackup,
   showStartupStorageNotice,
 };

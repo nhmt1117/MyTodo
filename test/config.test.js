@@ -76,6 +76,23 @@ test("global reminder settings normalize and persist", (t) => {
     args: ["--hidden"],
   });
 
+  const restored = loaded.config.replaceGlobalConfig({ dailySummary: false });
+  assert.equal(restored.dailySummary, false);
+  assert.equal(restored.autoStart, false);
+  assert.equal(restored.notificationSound, true);
+  assert.equal(restored.quietStart, "22:00");
+
+  loaded.config.setGlobalConfig({
+    autoStart: true,
+    notificationSound: false,
+    reminderPosition: "top-center",
+    quietStart: "21:30",
+    quietEnd: "07:45",
+    trayNoticeShown: true,
+    closeToTrayPrompt: false,
+    closeWithoutPromptAction: "quit",
+  });
+
   assert.equal(loaded.config.markSummarySent("daily", "2026-09-13"), true);
   assert.equal(loaded.config.markSummarySent("daily", "2026-09-13"), false);
   assert.equal(loaded.config.markSummarySent("weekly", "2026-09-07"), true);
