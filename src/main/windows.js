@@ -18,7 +18,7 @@ function getAppIconPath() {
 
 const APP_ICON_PATH = getAppIconPath();
 const APP_TASKBAR_ICON_PATH = app.isPackaged && process.resourcesPath
-  ? path.join(process.resourcesPath, "MyTodoTaskbar.ico")
+  ? path.join(process.resourcesPath, "MyTodoTaskbarV2.ico")
   : APP_ICON_PATH;
 const APP_USER_MODEL_ID = "com.nhmt.mytodo";
 const FLOAT_WIN_SIZE = { width: 220, height: 130 };
@@ -60,6 +60,8 @@ function applyTaskbarDetails(targetWindow) {
     appId: APP_USER_MODEL_ID,
     appIconPath: APP_TASKBAR_ICON_PATH,
     appIconIndex: 0,
+    relaunchCommand: `"${process.execPath}"`,
+    relaunchDisplayName: "MyTodo",
   });
 }
 

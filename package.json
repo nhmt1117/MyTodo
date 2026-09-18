@@ -1,6 +1,6 @@
 {
   "name": "mytodo",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "MyTodo 个人待办与循环提醒工具",
   "main": "main.js",
   "author": "nhmt",
@@ -55,7 +55,7 @@
       },
       {
         "from": "MyTodo.ico",
-        "to": "MyTodoTaskbar.ico"
+        "to": "MyTodoTaskbarV2.ico"
       }
     ],
     "electronDist": "node_modules/electron/dist",

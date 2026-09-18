@@ -20,13 +20,21 @@ test("installer shell keeps installation locking and payload validation", () => 
   const form = fs.readFileSync(path.join(root, "installer-shell", "InstallerForm.cs"), "utf8");
   const payload = fs.readFileSync(path.join(root, "installer-shell", "PayloadArchive.cs"), "utf8");
   const html = fs.readFileSync(path.join(root, "installer-shell", "wwwroot", "installer.html"), "utf8");
+  const nsis = fs.readFileSync(path.join(root, "build", "installer.nsh"), "utf8");
 
   assert.match(engine, /MyTodo-installing-\{Environment\.ProcessId\}\.lock/);
   assert.match(engine, /PreventMyTodoLaunchesAsync/);
   assert.match(engine, /process\.Kill\(entireProcessTree: true\)/);
   assert.match(engine, /WaitForInstalledVersionAsync/);
+  assert.match(engine, /EnsureUninstallRegistration\(\)/);
+  assert.match(engine, /InstallLocation[\s\S]*?InstallDate[\s\S]*?UninstallString/);
+  assert.match(engine, /SHChangeNotify[\s\S]*?SendMessageTimeout/);
   assert.match(form, /Opacity = 0d;[\s\S]*?RevealInstaller\(\)/);
   assert.match(payload, /MYTODO-PAYLOAD-1/);
   assert.match(html, /记下要做的，留住想要的。/);
   assert.match(html, /data-screen="update-progress"/);
+  assert.match(nsis, /CreateShortCut "\$newStartMenuLink"[\s\S]*?MyTodoTaskbarV2\.ico/);
+  assert.match(nsis, /CreateShortCut "\$newDesktopLink"[\s\S]*?MyTodoTaskbarV2\.ico/);
+  assert.match(nsis, /WinShell::SetLnkAUMI "\$newStartMenuLink" "\$\{APP_ID\}"/);
+  assert.match(nsis, /Shell32::SHChangeNotify/);
 });

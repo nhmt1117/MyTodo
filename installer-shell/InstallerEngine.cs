@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -29,6 +30,9 @@ internal sealed class InstallerEngine : IDisposable
     private const string UninstallRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\34df7b66-98d9-5bda-a4ff-830b6f4555d4";
     private const string AutoStartRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ProductName = "MyTodo";
+    private const string PublisherName = "nhmt";
+    private const string ProductDescription = "MyTodo 个人待办与循环提醒工具";
+    private const string UninstallerFileName = "Uninstall MyTodo.exe";
     private const long EstimatedInstallBytes = 371L * 1024 * 1024;
 
     private readonly string _workingDirectory = Path.Combine(
@@ -165,6 +169,8 @@ internal sealed class InstallerEngine : IDisposable
 
             progress.Report(new InstallProgress(96, "验证安装结果"));
             await WaitForInstalledVersionAsync(cancellationToken);
+            EnsureUninstallRegistration();
+            NotifyWindowsShell();
             progress.Report(new InstallProgress(100, Snapshot.Mode == InstallerMode.InAppUpdate ? "更新完成" : "安装完成"));
             ReleaseInstallLock();
         }
@@ -275,10 +281,64 @@ internal sealed class InstallerEngine : IDisposable
         return key?.GetValue(name)?.ToString()?.Trim() ?? string.Empty;
     }
 
+    private void EnsureUninstallRegistration()
+    {
+        var executable = Path.Combine(Snapshot.InstallDirectory, "MyTodo.exe");
+        var uninstaller = Path.Combine(Snapshot.InstallDirectory, UninstallerFileName);
+        if (!File.Exists(executable) || !File.Exists(uninstaller))
+        {
+            throw new InvalidOperationException("安装完成，但 Windows 卸载信息所需的程序文件不完整。");
+        }
+
+        using var key = Registry.CurrentUser.CreateSubKey(UninstallRegistryKey, writable: true)
+            ?? throw new InvalidOperationException("无法向 Windows 注册 MyTodo 卸载信息。");
+        key.SetValue("DisplayName", ProductName, RegistryValueKind.String);
+        key.SetValue("DisplayVersion", Snapshot.Version, RegistryValueKind.String);
+        key.SetValue("Publisher", PublisherName, RegistryValueKind.String);
+        key.SetValue("Comments", ProductDescription, RegistryValueKind.String);
+        key.SetValue("InstallLocation", Snapshot.InstallDirectory, RegistryValueKind.String);
+        key.SetValue("InstallDate", DateTime.Now.ToString("yyyyMMdd"), RegistryValueKind.String);
+        key.SetValue("DisplayIcon", $"{executable},0", RegistryValueKind.String);
+        key.SetValue("UninstallString", $"\"{uninstaller}\" /currentuser", RegistryValueKind.String);
+        key.SetValue("QuietUninstallString", $"\"{uninstaller}\" /currentuser /S", RegistryValueKind.String);
+        key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+        key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+        key.DeleteValue("SystemComponent", false);
+    }
+
+    private static void NotifyWindowsShell()
+    {
+        NativeMethods.SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero);
+        NativeMethods.SendMessageTimeout(
+            new IntPtr(0xffff),
+            0x001A,
+            UIntPtr.Zero,
+            @"Software\Microsoft\Windows\CurrentVersion\Uninstall",
+            0x0002,
+            5000,
+            out _);
+    }
+
     private static bool IsAutoStartEnabled()
     {
         using var key = Registry.CurrentUser.OpenSubKey(AutoStartRegistryKey);
         return key?.GetValue(ProductName) is not null;
+    }
+
+    private static class NativeMethods
+    {
+        [DllImport("shell32.dll")]
+        public static extern void SHChangeNotify(long eventId, uint flags, IntPtr item1, IntPtr item2);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern IntPtr SendMessageTimeout(
+            IntPtr window,
+            uint message,
+            UIntPtr wParam,
+            string lParam,
+            uint flags,
+            uint timeout,
+            out UIntPtr result);
     }
 
     private static string FormatBytes(long bytes)

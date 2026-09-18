@@ -11,7 +11,7 @@ function read(relativePath) {
 test("release metadata is complete and consistent", () => {
   const packageText = read("package.json");
   const pkg = JSON.parse(packageText);
-  assert.equal(pkg.version, "2.0.8");
+  assert.equal(pkg.version, "2.0.9");
   assert.equal(pkg.author, "nhmt");
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.build.appId, "com.nhmt.mytodo");
@@ -19,7 +19,7 @@ test("release metadata is complete and consistent", () => {
   assert.equal(pkg.build.electronDist, "node_modules/electron/dist");
   assert.deepEqual(pkg.build.extraResources, [
     { from: "MyTodo.ico", to: "MyTodo.ico" },
-    { from: "MyTodo.ico", to: "MyTodoTaskbar.ico" },
+    { from: "MyTodo.ico", to: "MyTodoTaskbarV2.ico" },
   ]);
   assert.deepEqual(pkg.build.publish, {
     provider: "generic",
@@ -202,7 +202,7 @@ test("main window preserves rounded opaque content and native controls", () => {
   assert.match(windows, /frame: false,[\s\S]*?hasShadow: true,[\s\S]*?resizable: true/);
   assert.match(windows, /const APP_ICON_PATH = getAppIconPath\(\);/);
   assert.match(windows, /const APP_USER_MODEL_ID = "com\.nhmt\.mytodo";/);
-  assert.match(windows, /function applyTaskbarDetails\(targetWindow\)[\s\S]*?appId: APP_USER_MODEL_ID,[\s\S]*?appIconPath: APP_TASKBAR_ICON_PATH,[\s\S]*?appIconIndex: 0/);
+  assert.match(windows, /function applyTaskbarDetails\(targetWindow\)[\s\S]*?appId: APP_USER_MODEL_ID,[\s\S]*?appIconPath: APP_TASKBAR_ICON_PATH,[\s\S]*?appIconIndex: 0,[\s\S]*?relaunchCommand:[\s\S]*?relaunchDisplayName: "MyTodo"/);
   assert.match(windows, /new Tray\(APP_ICON_PATH\)/);
 });
 
@@ -366,7 +366,7 @@ test("desktop release protects one local instance and exposes recovery tools", (
   assert.match(windows, /function requestCloseMainWindow\(\)[\s\S]*?close-confirmation-requested/);
   assert.match(windows, /function resolveCloseMainWindow\(action, dontAskAgain = false\)[\s\S]*?closeWithoutPromptAction[\s\S]*?config: updatedConfig/);
   assert.match(windows, /function cancelCloseMainWindow\(\)[\s\S]*?closePromptPending = false/);
-  assert.match(windows, /APP_TASKBAR_ICON_PATH = app\.isPackaged && process\.resourcesPath[\s\S]*?MyTodoTaskbar\.ico/);
+  assert.match(windows, /APP_TASKBAR_ICON_PATH = app\.isPackaged && process\.resourcesPath[\s\S]*?MyTodoTaskbarV2\.ico/);
   assert.match(windows, /appIconPath: APP_TASKBAR_ICON_PATH/);
   assert.match(windows, /tray\.on\("click"[\s\S]*?showMainWindow\(\)/);
   assert.match(windows, /function getAppIconPath\(\)[\s\S]*?process\.resourcesPath[\s\S]*?MyTodo\.ico/);
