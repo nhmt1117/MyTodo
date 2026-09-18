@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyTodo 首次安装界面方案</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      color-scheme:light;
+      --ink:#172033;
+      --muted:#748093;
+      --line:#d8e0e7;
+      --canvas:#e7edf2;
+      --surface:#f8fafb;
+      --white:#fff;
+      --primary:#4f46e5;
+      --primary-dark:#4338ca;
+      --primary-soft:#e5e6ff;
+      --success:#1d9a72;
+      --success-soft:#dff3eb;
+    }
+    html,body{min-height:100%}
+    body{
+      margin:0;
+      color:var(--ink);
+      background:var(--canvas);
+      font-family:"Microsoft YaHei UI","Segoe UI",sans-serif;
+    }
+    button,input{font:inherit}
+    .page-head{
+      position:sticky;
+      z-index:10;
+      top:0;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:24px;
+      min-height:72px;
+      padding:13px 28px;
+      border-bottom:1px solid rgba(23,32,51,.1);
+      background:rgba(248,250,251,.96);
+      backdrop-filter:blur(14px);
+    }
+    .brand{display:flex;align-items:center;gap:12px;min-width:0}
+    .brand img{width:36px;height:36px;flex:0 0 36px}
+    .brand h1{margin:0;font-size:18px;line-height:1.2}
+    .brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
+    .legend{color:#566273;font-size:11px;white-space:nowrap}
+    main{width:min(1500px,calc(100% - 40px));margin:26px auto 64px}
+    .intro{margin-bottom:26px}
+    .intro h2{margin:0;font-size:16px}
+    .intro p{margin:6px 0 0;color:var(--muted);font-size:12px}
+    .scheme{margin-top:38px}
+    .scheme:first-of-type{margin-top:0}
+    .scheme:not(.scheme-a){display:none}
+    .scheme-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .scheme-letter{
+      display:grid;
+      place-items:center;
+      width:27px;
+      height:27px;
+      border:1px solid #cdd5dd;
+      border-radius:6px;
+      background:#fff;
+      color:var(--primary);
+      font-weight:750;
+      font-size:12px;
+    }
+    .scheme-head h2{margin:0;font-size:15px}
+    .scheme-head p{margin:3px 0 0;color:var(--muted);font-size:11px}
+    .recommended{padding:3px 7px;border-radius:4px;color:#3730a3;background:var(--primary-soft);font-size:10px;font-weight:700}
+    .flow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 26px}
+    .flow{min-width:0}
+    .flow-label{display:flex;align-items:center;gap:7px;margin:0 0 7px;color:#566273;font-size:11px}
+    .flow-label strong{color:var(--ink);font-size:12px}
+    .window{
+      width:100%;
+      height:330px;
+      overflow:hidden;
+      border:1px solid #cbd3dc;
+      border-radius:7px;
+      background:var(--surface);
+      box-shadow:0 16px 36px rgba(28,39,55,.12),0 2px 7px rgba(28,39,55,.08);
+    }
+    .titlebar{
+      display:none;
+      align-items:center;
+      justify-content:space-between;
+      height:39px;
+      padding:0 11px 0 13px;
+      border-bottom:1px solid #e0e5ea;
+      background:#fff;
+      font-size:11px;
+      font-weight:650;
+    }
+    .window-brand{display:flex;align-items:center;gap:8px}
+    .window-brand img{width:20px;height:20px}
+    .window-actions{display:flex;align-items:center;gap:18px;color:#667283;font-size:13px;font-weight:400}
+    .close{font-size:16px}
+    .stage{height:100%}
+    .btn{
+      min-width:78px;
+      height:31px;
+      padding:0 14px;
+      border:1px solid #ccd5dd;
+      border-radius:5px;
+      color:#354255;
+      background:#fff;
+      font-size:11px;
+      font-weight:650;
+    }
+    .btn.primary{border-color:var(--primary);color:#fff;background:var(--primary)}
+    .btn.ghost{background:#f4f6f8}
+    .input-row{display:flex;gap:8px}
+    .input-row input{
+      width:100%;
+      min-width:0;
+      height:34px;
+      padding:0 10px;
+      border:1px solid #cbd4de;
+      border-radius:5px;
+      outline:0;
+      color:#344154;
+      background:#fff;
+      font-size:11px;
+    }
+    .progress-track{height:8px;overflow:hidden;border-radius:4px;background:#e4e8ed}
+    .progress-fill{width:68%;height:100%;background:var(--primary)}
+    .check-row{display:flex;align-items:center;gap:8px;color:#465467;font-size:11px}
+    .checkbox{
+      position:relative;
+      width:15px;
+      height:15px;
+      flex:0 0 15px;
+      border:1px solid var(--primary);
+      border-radius:3px;
+      background:var(--primary);
+    }
+    .checkbox::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+    .status-check{
+      position:relative;
+      width:48px;
+      height:48px;
+      border-radius:50%;
+      background:var(--success-soft);
+    }
+    .status-check::after{content:"";position:absolute;left:17px;top:11px;width:11px;height:20px;border:solid var(--success);border-width:0 3px 3px 0;transform:rotate(45deg)}
+    .choice{
+      display:flex;
+      align-items:flex-start;
+      gap:11px;
+      padding:11px 12px;
+      border:1px solid #d4dce4;
+      border-radius:6px;
+      background:#fff;
+    }
+    .choice.active{border-color:#8e89f2;background:#f2f2ff}
+    .radio{width:15px;height:15px;flex:0 0 15px;margin-top:1px;border:1px solid #aeb9c5;border-radius:50%;background:#fff}
+    .choice.active .radio{border:4px solid var(--primary)}
+    .choice strong{display:block;font-size:11px}
+    .choice small{display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.45}
+    .meta{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:10px}
+
+    /* A: compact guided */
+    .scheme-a .stage{display:flex;flex-direction:column;padding:20px 24px 18px}
+    .a-head{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+    .a-head img{width:34px;height:34px}
+    .a-head h3{margin:0;font-size:15px}
+    .a-head p{margin:3px 0 0;color:var(--muted);font-size:10px}
+    .a-choices{display:grid;gap:8px}
+    .a-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:auto}
+    .a-field{margin-top:13px}
+    .a-field label{display:block;margin-bottom:6px;color:#4f5c6c;font-size:10px;font-weight:650}
+    .a-note{margin-top:8px;color:var(--muted);font-size:10px}
+    .a-step-options .a-choices{width:min(470px,100%);margin:auto;align-self:center}
+    .a-step-location .a-field{width:min(470px,100%);margin:auto;align-self:center}
+    .scheme-a .a-step-options,.scheme-a .a-step-location{padding-bottom:32px}
+    .a-step-options .a-actions,.a-step-location .a-actions{width:min(470px,100%);align-self:center}
+    .a-space{display:grid;gap:5px;margin-top:12px;color:var(--muted);font-size:10px}
+    .a-space-row{display:flex;align-items:center;gap:8px}
+    .a-space-row strong{color:#4f5c6c;font-weight:650}
+    .a-progress{width:min(430px,100%);margin:auto}
+    .a-progress .a-head{margin-bottom:22px}
+    .a-progress .meta{margin-top:10px}
+    .a-finish{align-items:center;justify-content:center;text-align:center}
+    .a-finish h3{margin:12px 0 4px;font-size:16px}
+    .a-finish>p{margin:0 0 15px;color:var(--muted);font-size:10px}
+    .finish-options{display:grid;gap:8px;min-width:190px;margin-bottom:18px;text-align:left}
+    .scheme-a .a-finish .finish-options{width:max-content;min-width:0;margin:0 auto 18px;padding-left:18px}
+    .prototype-dialog{
+      position:absolute;
+      inset:0;
+      z-index:5;
+      display:grid;
+      place-items:center;
+      padding:24px;
+      background:rgba(26,34,48,.28);
+      backdrop-filter:blur(3px);
+    }
+    .prototype-dialog[hidden]{display:none}
+    .dialog-panel{
+      width:min(330px,100%);
+      padding:21px;
+      border:1px solid rgba(255,255,255,.82);
+      border-radius:7px;
+      background:rgba(248,250,252,.96);
+      box-shadow:0 18px 42px rgba(28,39,55,.2);
+    }
+    .dialog-panel h4{margin:0 0 7px;font-size:15px}
+    .dialog-panel p{margin:0;color:var(--muted);font-size:11px;line-height:1.6}
+    .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+    .scheme-a .window{position:relative}
+
+    /* B: navigation rail */
+    .scheme-b .stage{display:grid;grid-template-columns:132px 1fr;padding:0}
+    .rail{display:flex;flex-direction:column;padding:18px 14px;border-right:1px solid #dde3e8;background:#f0f3f6}
+    .rail-brand{display:flex;align-items:center;gap:7px;margin-bottom:20px;font-size:11px;font-weight:750}
+    .rail-brand img{width:23px;height:23px}
+    .steps{display:grid;gap:5px}
+    .step{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:5px;color:#7b8796;font-size:10px}
+    .step-dot{display:grid;place-items:center;width:18px;height:18px;border:1px solid #bac4ce;border-radius:50%;font-size:9px}
+    .step.active{color:#3730a3;background:#dedfff;font-weight:700}
+    .step.active .step-dot{border-color:var(--primary);color:#fff;background:var(--primary)}
+    .step.done{color:#5e6b7b}
+    .step.done .step-dot{border-color:#79bda6;color:#fff;background:var(--success)}
+    .rail-version{margin-top:auto;color:#909aa7;font-size:9px}
+    .b-content{display:flex;flex-direction:column;min-width:0;padding:22px 24px 18px}
+    .b-content h3{margin:0;font-size:15px}
+    .b-content>.lead{margin:5px 0 16px;color:var(--muted);font-size:10px}
+    .b-content .choice{padding:10px;margin-bottom:8px}
+    .b-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:auto}
+    .b-progress{margin:auto 0}
+    .b-progress .progress-track{margin:17px 0 9px}
+    .b-finish{align-items:flex-start;justify-content:center}
+    .b-finish .status-check{width:42px;height:42px}
+    .b-finish .status-check::after{left:15px;top:9px;width:10px;height:18px}
+    .b-finish h3{margin:11px 0 4px}
+    .b-finish>.lead{margin-bottom:16px}
+
+    /* C: compact utility */
+    .scheme-c .window{height:282px}
+    .scheme-c .stage{padding:18px 22px 16px;background:#fff}
+    .c-head{display:flex;align-items:center;gap:10px}
+    .c-head img{width:32px;height:32px}
+    .c-head h3{margin:0;font-size:14px}
+    .c-head p{margin:3px 0 0;color:var(--muted);font-size:10px}
+    .c-rule{height:1px;margin:14px 0;background:#e4e8ed}
+    .c-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .c-choices .choice{min-height:64px}
+    .c-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+    .c-field{margin-top:14px}
+    .c-note{margin:8px 0 0;color:var(--muted);font-size:9px}
+    .c-progress{display:flex;flex-direction:column;justify-content:center}
+    .c-progress .progress-track{margin:22px 0 10px}
+    .c-finish{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+    .c-finish .status-check{width:42px;height:42px}
+    .c-finish .status-check::after{left:15px;top:9px;width:10px;height:18px}
+    .c-finish h3{margin:9px 0 3px;font-size:15px}
+    .c-finish>p{margin:0 0 12px;color:var(--muted);font-size:10px}
+    .c-finish .finish-options{grid-template-columns:1fr 1fr;min-width:340px;margin-bottom:14px}
+
+    /* D: refined native */
+    .scheme-d .stage{display:flex;flex-direction:column;padding:19px 22px 17px;background:#f7f9fb}
+    .d-heading{padding-bottom:14px;border-bottom:1px solid #dce2e8}
+    .scheme-d .d-heading{min-height:34px;padding-left:39px;background:url("../MyTodo.ico") no-repeat 0 0/27px 27px}
+    .d-heading h3{margin:0;font-size:15px}
+    .d-heading p{margin:4px 0 0;color:var(--muted);font-size:10px}
+    .d-body{padding-top:15px}
+    .d-choice{display:flex;align-items:center;gap:9px;padding:8px 0;color:#354255;font-size:11px}
+    .d-choice .radio{margin:0}
+    .d-choice.active{color:#302b9d;font-weight:700}
+    .d-info{margin:8px 0 0 24px;color:var(--muted);font-size:10px}
+    .d-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:auto;padding-top:12px;border-top:1px solid #dce2e8}
+    .d-progress{margin:auto 0}
+    .d-progress .meta:first-child{margin-bottom:9px;color:#3b4758;font-size:11px}
+    .d-progress .meta:last-child{margin-top:9px}
+    .d-finish{display:flex;align-items:center;gap:16px;margin:auto 0}
+    .d-finish-copy h3{margin:0 0 5px;font-size:16px}
+    .d-finish-copy p{margin:0 0 14px;color:var(--muted);font-size:10px}
+    .d-finish-copy .finish-options{margin:0}
+    @media(max-width:980px){
+      .flow-grid{grid-template-columns:1fr}
+      .page-head{position:static}
+    }
+    @media(max-width:560px){
+      main{width:calc(100% - 20px)}
+      .page-head{padding:12px 14px}
+      .legend{display:none}
+      .window{height:350px}
+      .scheme-b .stage{grid-template-columns:105px 1fr}
+      .rail{padding:15px 8px}
+      .b-content{padding:18px 14px}
+      .c-choices{grid-template-columns:1fr}
+      .c-finish .finish-options{grid-template-columns:1fr;min-width:210px}
+    }
+  </style>
+</head>
+<body>
+  <header class="page-head">
+    <div class="brand">
+      <img src="../MyTodo.ico" alt="MyTodo">
+      <div><h1>MyTodo 首次安装界面方案</h1><p>每套方案均展示完整的四步安装流程</p></div>
+    </div>
+    <div class="legend">安装范围 → 安装目录 → 安装进度 → 安装完成</div>
+  </header>
+
+  <main>
+    <div class="intro">
+      <h2>请选择一套整体方向</h2>
+      <p>这些页面只负责视觉确认；正式实现仍会保留版本检测、管理员权限、覆盖安装和卸载能力。</p>
+    </div>
+
+    <section class="scheme scheme-a">
+      <div class="scheme-head"><span class="scheme-letter">A</span><div><h2>紧凑引导 <span class="recommended">推荐</span></h2><p>信息集中，路径清楚，与当前 D 版更新窗口最协调。</p></div></div>
+      <div class="flow-grid">
+        <div class="flow"><div class="flow-label"><strong>01</strong> 安装范围</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage a-step-options"><div class="a-head"><img src="../MyTodo.ico" alt=""><div><h3>安装 MyTodo</h3></div></div><div class="a-choices"><div class="choice active"><span class="radio"></span><div><strong>仅为当前用户安装</strong><small>无需管理员权限，只在当前账户中使用</small></div></div><div class="choice"><span class="radio"></span><div><strong>为所有用户安装</strong><small>需要管理员权限，这台电脑上的账户都可使用</small></div></div></div><div class="a-actions"><button class="btn ghost" id="showCancelDialog">取消安装</button><button class="btn primary">继续</button></div></div><div class="prototype-dialog" id="cancelDialog" hidden><div class="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="cancelDialogTitle"><h4 id="cancelDialogTitle">确认取消安装？</h4><p>取消后将退出安装程序，MyTodo 不会安装到这台电脑。</p><div class="dialog-actions"><button class="btn ghost" id="confirmCancel">确认取消</button><button class="btn primary" id="continueInstall">继续安装</button></div></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>02</strong> 安装目录</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage a-step-location"><div class="a-head"><img src="../MyTodo.ico" alt=""><div><h3>选择安装位置</h3></div></div><div class="a-field"><label>安装到</label><div class="input-row"><input value="D:\Software\MyTodo" readonly><button class="btn">浏览</button></div><div class="a-space"><div class="a-space-row"><strong>所需空间</strong><span>371 MB</span></div><div class="a-space-row"><strong>可用空间</strong><span>51.8 GB</span></div></div></div><div class="a-actions"><button class="btn ghost">上一步</button><button class="btn primary">开始安装</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>03</strong> 安装进度</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="a-progress"><div class="a-head"><img src="../MyTodo.ico" alt=""><div><h3>正在安装 MyTodo</h3><p>版本 2.0.7</p></div></div><div class="progress-track"><div class="progress-fill"></div></div><div class="meta"><span>写入程序文件</span><strong>68%</strong></div></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>04</strong> 安装完成</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage a-finish"><div class="status-check"></div><h3>安装完成</h3><p>MyTodo 2.0.7 已准备就绪</p><div class="finish-options"><div class="check-row"><span class="checkbox"></span>立即启动 MyTodo</div><div class="check-row"><span class="checkbox"></span>开机自动启动</div></div><button class="btn primary">完成</button></div></div></div>
+      </div>
+    </section>
+
+    <section class="scheme scheme-b">
+      <div class="scheme-head"><span class="scheme-letter">B</span><div><h2>左侧步骤</h2><p>过程感最强，用户始终知道当前处于哪一步。</p></div></div>
+      <div class="flow-grid">
+        <div class="flow"><div class="flow-label"><strong>01</strong> 安装范围</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><aside class="rail"><div class="rail-brand"><img src="../MyTodo.ico" alt="">MyTodo</div><div class="steps"><div class="step active"><span class="step-dot">1</span>安装范围</div><div class="step"><span class="step-dot">2</span>安装位置</div><div class="step"><span class="step-dot">3</span>安装程序</div><div class="step"><span class="step-dot">4</span>完成</div></div><div class="rail-version">版本 2.0.7</div></aside><div class="b-content"><h3>谁可以使用 MyTodo？</h3><p class="lead">选择适合这台电脑的安装范围</p><div class="choice active"><span class="radio"></span><div><strong>仅当前用户</strong><small>无需管理员权限</small></div></div><div class="choice"><span class="radio"></span><div><strong>这台电脑上的所有用户</strong><small>继续时会请求管理员权限</small></div></div><div class="b-actions"><button class="btn ghost">取消</button><button class="btn primary">下一步</button></div></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>02</strong> 安装目录</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><aside class="rail"><div class="rail-brand"><img src="../MyTodo.ico" alt="">MyTodo</div><div class="steps"><div class="step done"><span class="step-dot">✓</span>安装范围</div><div class="step active"><span class="step-dot">2</span>安装位置</div><div class="step"><span class="step-dot">3</span>安装程序</div><div class="step"><span class="step-dot">4</span>完成</div></div><div class="rail-version">版本 2.0.7</div></aside><div class="b-content"><h3>安装位置</h3><p class="lead">选择 MyTodo 程序文件的保存位置</p><div class="input-row"><input value="D:\Software\MyTodo" readonly><button class="btn">浏览</button></div><p class="a-note">选择父目录时会自动添加 MyTodo 文件夹。</p><div class="b-actions"><button class="btn ghost">取消</button><button class="btn ghost">上一步</button><button class="btn primary">安装</button></div></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>03</strong> 安装进度</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><aside class="rail"><div class="rail-brand"><img src="../MyTodo.ico" alt="">MyTodo</div><div class="steps"><div class="step done"><span class="step-dot">✓</span>安装范围</div><div class="step done"><span class="step-dot">✓</span>安装位置</div><div class="step active"><span class="step-dot">3</span>安装程序</div><div class="step"><span class="step-dot">4</span>完成</div></div><div class="rail-version">版本 2.0.7</div></aside><div class="b-content"><div class="b-progress"><h3>正在安装</h3><p class="lead">请稍候，MyTodo 正在写入程序文件。</p><div class="progress-track"><div class="progress-fill"></div></div><div class="meta"><span>写入程序文件</span><strong>68%</strong></div></div><div class="b-actions"><button class="btn ghost">取消安装</button></div></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>04</strong> 安装完成</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><aside class="rail"><div class="rail-brand"><img src="../MyTodo.ico" alt="">MyTodo</div><div class="steps"><div class="step done"><span class="step-dot">✓</span>安装范围</div><div class="step done"><span class="step-dot">✓</span>安装位置</div><div class="step done"><span class="step-dot">✓</span>安装程序</div><div class="step active"><span class="step-dot">4</span>完成</div></div><div class="rail-version">版本 2.0.7</div></aside><div class="b-content b-finish"><div class="status-check"></div><h3>MyTodo 已安装完成</h3><p class="lead">可以立即开始使用。</p><div class="finish-options"><div class="check-row"><span class="checkbox"></span>立即启动 MyTodo</div><div class="check-row"><span class="checkbox"></span>开机自动启动 MyTodo</div></div><div class="b-actions"><button class="btn primary">完成</button></div></div></div></div></div>
+      </div>
+    </section>
+
+    <section class="scheme scheme-c">
+      <div class="scheme-head"><span class="scheme-letter">C</span><div><h2>极简小窗</h2><p>占用空间最少，延续应用内更新 D 方案的工具窗口感。</p></div></div>
+      <div class="flow-grid">
+        <div class="flow"><div class="flow-label"><strong>01</strong> 安装范围</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="c-head"><img src="../MyTodo.ico" alt=""><div><h3>安装 MyTodo</h3><p>选择使用范围</p></div></div><div class="c-rule"></div><div class="c-choices"><div class="choice active"><span class="radio"></span><div><strong>当前用户</strong><small>无需管理员权限</small></div></div><div class="choice"><span class="radio"></span><div><strong>所有用户</strong><small>需要管理员权限</small></div></div></div><div class="c-actions"><button class="btn ghost">取消</button><button class="btn primary">继续</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>02</strong> 安装目录</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="c-head"><img src="../MyTodo.ico" alt=""><div><h3>安装位置</h3><p>选择程序文件目录</p></div></div><div class="c-field"><div class="input-row"><input value="D:\Software\MyTodo" readonly><button class="btn">浏览</button></div><p class="c-note">将自动补充 MyTodo 文件夹 · 需要约 371 MB</p></div><div class="c-actions"><button class="btn ghost">取消</button><button class="btn ghost">返回</button><button class="btn primary">安装</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>03</strong> 安装进度</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage c-progress"><div class="c-head"><img src="../MyTodo.ico" alt=""><div><h3>正在安装 MyTodo</h3><p>版本 2.0.7</p></div></div><div class="progress-track"><div class="progress-fill"></div></div><div class="meta"><span>写入程序文件</span><strong>68%</strong></div><div class="c-actions"><button class="btn ghost">取消安装</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>04</strong> 安装完成</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage c-finish"><div class="status-check"></div><h3>安装完成</h3><p>MyTodo 已准备就绪</p><div class="finish-options"><div class="check-row"><span class="checkbox"></span>立即启动</div><div class="check-row"><span class="checkbox"></span>开机自动启动</div></div><button class="btn primary">完成</button></div></div></div>
+      </div>
+    </section>
+
+    <section class="scheme scheme-d">
+      <div class="scheme-head"><span class="scheme-letter">D</span><div><h2>原生融合</h2><p>保留熟悉的 Windows 安装结构，调整为 MyTodo 的色彩和信息层级。</p></div></div>
+      <div class="flow-grid">
+        <div class="flow"><div class="flow-label"><strong>01</strong> 安装范围</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="d-heading"><h3>安装选项</h3><p>选择 MyTodo 的使用范围</p></div><div class="d-body"><div class="d-choice active"><span class="radio"></span>仅为当前用户安装</div><div class="d-info">无需管理员权限，推荐个人电脑使用。</div><div class="d-choice"><span class="radio"></span>为这台电脑上的所有用户安装</div><div class="d-info">需要管理员权限。</div></div><div class="d-actions"><button class="btn ghost">取消</button><button class="btn primary">下一步</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>02</strong> 安装目录</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="d-heading"><h3>选择安装位置</h3><p>选择 MyTodo 要安装的文件夹</p></div><div class="d-body"><div class="input-row"><input value="D:\Software\MyTodo" readonly><button class="btn">浏览...</button></div><div class="a-note">所需空间：371 MB　可用空间：51.8 GB</div></div><div class="d-actions"><button class="btn ghost">取消</button><button class="btn ghost">上一步</button><button class="btn primary">安装</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>03</strong> 安装进度</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="d-heading"><h3>正在安装</h3><p>请稍候，安装程序正在将 MyTodo 安装到电脑。</p></div><div class="d-progress"><div class="meta"><span>写入程序文件</span><strong>68%</strong></div><div class="progress-track"><div class="progress-fill"></div></div><div class="meta"><span>D:\Software\MyTodo</span><span>版本 2.0.7</span></div></div><div class="d-actions"><button class="btn ghost">取消安装</button></div></div></div></div>
+        <div class="flow"><div class="flow-label"><strong>04</strong> 安装完成</div><div class="window"><div class="titlebar"><span class="window-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</span><span class="window-actions"><span>—</span><span class="close">×</span></span></div><div class="stage"><div class="d-heading"><h3>安装完成</h3><p>MyTodo 已成功安装到这台电脑。</p></div><div class="d-finish"><div class="status-check"></div><div class="d-finish-copy"><h3>可以开始使用</h3><p>点击完成退出安装程序。</p><div class="finish-options"><div class="check-row"><span class="checkbox"></span>立即启动 MyTodo</div><div class="check-row"><span class="checkbox"></span>开机自动启动 MyTodo</div></div></div></div><div class="d-actions"><button class="btn primary">完成</button></div></div></div></div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const cancelDialog = document.getElementById("cancelDialog");
+    document.getElementById("showCancelDialog").addEventListener("click", () => {
+      cancelDialog.hidden = false;
+      document.getElementById("continueInstall").focus();
+    });
+    document.getElementById("continueInstall").addEventListener("click", () => {
+      cancelDialog.hidden = true;
+      document.getElementById("showCancelDialog").focus();
+    });
+    document.getElementById("confirmCancel").addEventListener("click", () => {
+      cancelDialog.hidden = true;
+    });
+    cancelDialog.addEventListener("click", (event) => {
+      if (event.target === cancelDialog) cancelDialog.hidden = true;
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !cancelDialog.hidden) cancelDialog.hidden = true;
+    });
+  </script>
+</body>
+</html>

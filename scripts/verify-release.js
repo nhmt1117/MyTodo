@@ -112,6 +112,11 @@ const checksums = artifacts.map((file) => {
   const content = fs.readFileSync(path.join(output, file));
   assert.ok(content.length > 1024 * 1024, `Installer is unexpectedly small: ${file}`);
   assert.equal(content.subarray(0, 2).toString(), "MZ", "Installer is not a Windows executable");
+  const footer = content.subarray(-24);
+  assert.equal(footer.subarray(8).toString("ascii"), "MYTODO-PAYLOAD-1", "Installer payload footer is missing");
+  const payloadSize = Number(footer.readBigInt64LE(0));
+  assert.ok(payloadSize > 1024 * 1024, "Embedded backend installer is unexpectedly small");
+  assert.ok(payloadSize < content.length - footer.length, "Embedded backend installer size is invalid");
   return `${createHash("sha256").update(content).digest("hex")}  ${file}`;
 });
 fs.writeFileSync(path.join(output, "SHA256SUMS.txt"), `${checksums.join("\n")}\n`);

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyTodo 安装欢迎页方案</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      color-scheme:light;
+      --ink:#172033;
+      --muted:#748093;
+      --line:#d8e0e7;
+      --canvas:#e7edf2;
+      --surface:#f8fafb;
+      --primary:#4f46e5;
+      --primary-soft:#eeeeff;
+    }
+    html,body{min-height:100%}
+    body{
+      margin:0;
+      color:var(--ink);
+      background:var(--canvas);
+      font-family:"Microsoft YaHei UI","Segoe UI",sans-serif;
+    }
+    button{font:inherit}
+    .page-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      min-height:72px;
+      padding:13px 28px;
+      border-bottom:1px solid rgba(23,32,51,.1);
+      background:rgba(248,250,251,.96);
+    }
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand img{width:36px;height:36px}
+    .brand h1{margin:0;font-size:18px}
+    .brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
+    .hint{color:#566273;font-size:11px}
+    main{width:min(1480px,calc(100% - 40px));margin:28px auto 60px}
+    .intro{margin-bottom:18px}
+    .intro h2{margin:0;font-size:16px}
+    .intro p{margin:6px 0 0;color:var(--muted);font-size:12px}
+    .options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+    .option{min-width:0}
+    .option-label{display:flex;align-items:center;gap:8px;margin-bottom:8px;color:#566273;font-size:11px}
+    .option-label strong{display:grid;place-items:center;width:26px;height:26px;border:1px solid #cdd5dd;border-radius:6px;color:var(--primary);background:#fff}
+    .recommended{padding:3px 7px;border-radius:4px;color:#3730a3;background:#e5e6ff;font-size:10px;font-weight:700}
+    .window{
+      position:relative;
+      height:330px;
+      overflow:hidden;
+      border:1px solid #cbd3dc;
+      border-radius:7px;
+      background:var(--surface);
+      box-shadow:0 16px 36px rgba(28,39,55,.12),0 2px 7px rgba(28,39,55,.08);
+    }
+    .stage{display:flex;height:100%;flex-direction:column;padding:20px 24px 32px}
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:78px;
+      height:31px;
+      padding:0 14px;
+      border:1px solid #ccd5dd;
+      border-radius:5px;
+      color:#354255;
+      background:#f4f6f8;
+      font-size:11px;
+      font-weight:650;
+    }
+    .btn.primary{border-color:var(--primary);color:#fff;background:var(--primary)}
+    .actions{display:flex;justify-content:flex-end;gap:8px;width:min(470px,100%);margin-top:auto;align-self:center}
+    .app-head{display:flex;align-items:center;gap:11px}
+    .app-head img{width:34px;height:34px}
+    .app-head h3{margin:0;font-size:15px}
+    .app-head p{margin:3px 0 0;color:var(--muted);font-size:10px}
+    .welcome-copy h2{margin:0;font-size:22px;letter-spacing:0}
+    .welcome-copy p{margin:8px 0 0;color:var(--muted);font-size:11px;line-height:1.7}
+
+    .classic-body{width:min(470px,100%);margin:auto;align-self:center}
+    .classic-body .eyebrow{margin-bottom:7px;color:var(--primary);font-size:10px;font-weight:750}
+    .classic-body p{max-width:350px}
+
+    .centered{align-items:center;text-align:center}
+    .centered .center-body{margin:auto 0}
+    .centered .center-body img{width:58px;height:58px;margin-bottom:13px}
+    .centered .center-body h2{font-size:21px}
+    .centered .center-body p{margin:7px 0 10px;color:var(--muted);font-size:11px}
+    .version-pill{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;color:#4540b3;background:var(--primary-soft);font-size:10px;font-weight:650}
+    .centered .actions{justify-content:center}
+
+    .compact-body{display:grid;grid-template-columns:108px 1fr;align-items:center;width:min(470px,100%);margin:auto;align-self:center}
+    .compact-mark{display:grid;place-items:center;align-self:stretch;border-right:1px solid var(--line)}
+    .compact-mark img{width:58px;height:58px}
+    .compact-copy{padding-left:28px}
+    .compact-copy h2{font-size:20px}
+    .compact-meta{display:grid;gap:7px;margin-top:16px;color:#566273;font-size:10px}
+    .compact-meta span{display:flex;align-items:center;gap:7px}
+    .compact-meta i{display:block;width:5px;height:5px;border-radius:50%;background:var(--primary)}
+
+    @media(max-width:1100px){.options{grid-template-columns:1fr}.window{height:330px}}
+    @media(max-width:560px){main{width:calc(100% - 20px)}.page-head{padding:12px 14px}.hint{display:none}.compact-body{grid-template-columns:76px 1fr}.compact-copy{padding-left:18px}}
+  </style>
+</head>
+<body>
+  <header class="page-head">
+    <div class="brand">
+      <img src="../MyTodo.ico" alt="MyTodo">
+      <div><h1>MyTodo 安装欢迎页</h1><p>第一步视觉方案</p></div>
+    </div>
+    <div class="hint">选定后接入现有安装位置 → 安装进度 → 安装完成</div>
+  </header>
+
+  <main>
+    <div class="intro">
+      <h2>选择欢迎页样式</h2>
+      <p>后续三个步骤保持当前方案 A 不变。</p>
+    </div>
+
+    <div class="options">
+      <section class="option">
+        <div class="option-label"><strong>A1</strong><span>标准欢迎</span><span class="recommended">推荐</span></div>
+        <div class="window">
+          <div class="stage">
+            <div class="app-head"><img src="../MyTodo.ico" alt=""><div><h3>安装 MyTodo</h3><p>版本 2.0.7</p></div></div>
+            <div class="classic-body welcome-copy"><div class="eyebrow">欢迎</div><h2>欢迎使用 MyTodo</h2><p>安装程序已准备就绪，继续以选择安装位置。</p></div>
+            <div class="actions"><button class="btn">取消安装</button><button class="btn primary">继续</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="option">
+        <div class="option-label"><strong>A2</strong><span>品牌居中</span></div>
+        <div class="window">
+          <div class="stage centered">
+            <div class="center-body"><img src="../MyTodo.ico" alt=""><div class="welcome-copy"><h2>欢迎使用 MyTodo</h2><p>记下要做的，留住想要的。</p></div><span class="version-pill">版本 2.0.7</span></div>
+            <div class="actions"><button class="btn">取消安装</button><button class="btn primary">开始安装</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="option">
+        <div class="option-label"><strong>A3</strong><span>紧凑信息</span></div>
+        <div class="window">
+          <div class="stage">
+            <div class="app-head"><img src="../MyTodo.ico" alt=""><div><h3>MyTodo</h3><p>安装程序</p></div></div>
+            <div class="compact-body"><div class="compact-mark"><img src="../MyTodo.ico" alt=""></div><div class="compact-copy welcome-copy"><h2>准备安装</h2><p>欢迎使用 MyTodo</p><div class="compact-meta"><span><i></i>版本 2.0.7</span><span><i></i>仅为当前用户安装</span></div></div></div>
+            <div class="actions"><button class="btn">取消安装</button><button class="btn primary">继续</button></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

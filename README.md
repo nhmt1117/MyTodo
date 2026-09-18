@@ -2,11 +2,13 @@
 
 MyTodo 是一款基于 Electron 的本地个人待办应用。2.0 重新整理了首页、日历、任务编辑和提醒系统：任务只在统一编辑窗口中维护，日历专注查看时间分布，提醒根据优先级提前介入。
 
-当前版本：**2.0.2**。目前主要面向 Windows x64；macOS 和 Linux 虽保留构建配置，但尚未完成发布验证。
+当前版本：**2.0.8**。目前主要面向 Windows x64；macOS 和 Linux 虽保留构建配置，但尚未完成发布验证。
 
 ## 安装与使用
 
-普通用户下载 Release 中的 `MyTodo-Setup-2.0.2.exe`，按向导安装即可，不需要 Node.js。关闭主窗口后应用会留在系统托盘继续检查提醒；完全退出请在托盘菜单中选择“退出程序”。
+普通用户下载 Release 中的 `MyTodo-Setup-2.0.8.exe`，按向导安装即可，不需要 Node.js 或 .NET。关闭主窗口后应用会留在系统托盘继续检查提醒；完全退出请在托盘菜单中选择“退出程序”。
+
+安装界面使用 Windows WebView2 Runtime；Windows 11 和多数已更新的 Windows 10 设备通常已包含它，缺失时安装器会明确提示先安装该运行时。
 
 主界面包含三个区域：
 
@@ -35,7 +37,7 @@ MyTodo 是一款基于 Electron 的本地个人待办应用。2.0 重新整理�
 - 应用采用单实例运行；重复启动只会恢复已有主窗口，不会产生重复提醒和并发写入。
 - 设置页显示提醒调度器的真实运行状态；运行日志保留在本地数据目录中用于故障排查。
 - 窗口尺寸、圆角、阴影、最大化/还原与应用图标适配。
-- Windows 安装器显示已安装版本，同版本重装和升级需要确认，并禁止安装更旧版本。
+- Windows 安装器显示已安装版本；相同版本无需重复安装，升级需要确认，并禁止安装更旧版本。
 - Windows 安装版直接读取 GitHub 最新正式 Release 的更新资源，支持手动下载进度和确认后重启安装。
 
 ## 提醒规则
@@ -85,7 +87,7 @@ npm start -- --user-data-dir=D:/MyTodo-test-profile
 
 ## 开发
 
-已验证的开发工具组合为 Node.js 24、npm 11、Electron 44.1.1、electron-builder 26.15.3 和 electron-updater 6.8.9。请保留 `package-lock.json`。
+已验证的开发工具组合为 Node.js 24、npm 11、.NET SDK 8、Electron 44.1.1、electron-builder 26.15.3 和 electron-updater 6.8.9。请保留 `package-lock.json`。
 
 Windows 安装依赖：
 
@@ -115,7 +117,7 @@ Windows 构建：
 build.bat
 ```
 
-该脚本会依次执行语法检查和自动化测试、生成 NSIS 安装包与更新元数据、比对 ASAR 内的源码与文档，并写入 `dist/SHA256SUMS.txt`。
+该脚本会依次执行语法检查和自动化测试、生成 HTML 安装界面与静默 NSIS 安装后端、生成更新元数据、比对 ASAR 内的源码与文档，并写入 `dist/SHA256SUMS.txt`。
 
 构建会复用 `node_modules/electron/dist` 中已通过安装检查的 Electron 运行时，避免重复下载或解压同一版本。
 
@@ -131,7 +133,7 @@ npm run verify:release
 
 ## Windows 安装
 
-安装器会识别已安装的 MyTodo 版本。同版本安装会询问是否重新安装，较新安装包会显示从当前版本升级到目标版本；较旧安装包会被直接阻止。继续覆盖安装前会提示从托盘完全退出 MyTodo，如果程序仍在运行，安装器会在写入文件前再次要求关闭。
+安装器会识别已安装的 MyTodo 版本。同版本会提示无需重新安装，较新安装包会显示从当前版本升级到目标版本，较旧安装包会被直接阻止。点击安装或升级时会立即检查 MyTodo 是否仍在运行；程序未退出时不会开始写入文件，安装过程中也会阻止再次启动 MyTodo。
 
 选择父目录后，安装器会确保最终路径以 `MyTodo` 目录结尾。例如选择 `D:\Software`，实际安装到 `D:\Software\MyTodo`。安装完成页可分别选择“启动 MyTodo”和“开机自动启动 MyTodo”；开机启动选项会同步到应用设置，之后仍可在“设置 → 通用”中修改。
 
@@ -139,13 +141,14 @@ npm run verify:release
 
 自动更新仅在 Windows NSIS 安装版中启用；开发模式、便携版和非 Windows 平台不会连接更新服务。应用启动 30 秒后自动检查，之后每 6 小时检查一次，也可以在“设置 → 关于”中手动检查。发现版本后点击“下载并安装”即可；下载完成会自动关闭应用、沿用原安装目录并启动精简的升级安装器。升级安装器不再显示版本确认、目录选择和开机启动选项，只保留安装进度与完成页。
 
-仓库内的 `.github/workflows/release-windows.yml` 会在推送与 `package.json` 版本一致的版本标签（例如 `v2.0.7`）后运行检查、构建 Windows 安装包并发布 Release；标签可以带 `v` 前缀。工作流会上传安装包、`.blockmap` 和 `latest.yml`，并写入面向用户的中文发布说明。
+仓库内的 `.github/workflows/release-windows.yml` 会在推送与 `package.json` 版本一致的版本标签（例如 `v2.0.8`）后运行检查、构建 Windows 安装包并发布 Release；标签可以带 `v` 前缀。工作流会上传安装包、`.blockmap` 和 `latest.yml`，并写入面向用户的中文发布说明。
 
 ## 项目结构
 
 ```text
 .
-├── build/installer.nsh       # Windows 安装器版本、目录和启动选项
+├── build/installer.nsh        # 静默 NSIS 安装后端与卸载逻辑
+├── installer-shell/           # HTML/WebView2 安装与应用内升级界面
 ├── main.js                    # Electron 启动入口
 ├── preload.js                 # 安全 IPC 桥
 ├── index.html                 # 主窗口
@@ -157,6 +160,7 @@ npm run verify:release
 │   ├── backup.js              # 用户数据导出备份
 │   ├── dataLocation.js        # 数据目录与迁移
 │   ├── installOptions.js      # 一次性同步安装器启动选项
+│   ├── installLock.js         # 安装期间的应用启动保护
 │   ├── logger.js              # 本地运行日志
 │   ├── storage.js             # 原子写入和备份恢复
 │   ├── supportTools.js        # 数据状态与用户自救工具

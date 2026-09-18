@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyTodo 安装与升级最终样式</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      color-scheme:light;
+      --ink:#172033;
+      --muted:#748093;
+      --line:#d8e0e7;
+      --canvas:#e7edf2;
+      --surface:#f8fafb;
+      --primary:#4f46e5;
+      --primary-soft:#eeeeff;
+      --success:#1d9a72;
+      --success-soft:#dff3eb;
+    }
+    html,body{min-height:100%}
+    body{margin:0;color:var(--ink);background:var(--canvas);font-family:"Microsoft YaHei UI","Segoe UI",sans-serif}
+    button,input{font:inherit}
+    .page-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      min-height:72px;
+      padding:13px 28px;
+      border-bottom:1px solid rgba(23,32,51,.1);
+      background:rgba(248,250,251,.96);
+    }
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand img{width:36px;height:36px}
+    .brand h1{margin:0;font-size:18px}
+    .brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
+    .fixed-note{color:#566273;font-size:11px}
+    main{width:min(1240px,calc(100% - 40px));margin:26px auto 64px}
+    .section-head{margin:0 0 14px}
+    .section-head h2{margin:0;font-size:16px}
+    .section-head p{margin:6px 0 0;color:var(--muted);font-size:11px}
+    .flow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 26px}
+    .flow-label{display:flex;align-items:center;gap:7px;margin:0 0 7px;color:#566273;font-size:11px}
+    .flow-label strong{color:var(--ink);font-size:12px}
+    .installer-window{
+      position:relative;
+      width:100%;
+      height:330px;
+      overflow:hidden;
+      border:1px solid rgba(100,116,139,.3);
+      border-radius:10px;
+      background:var(--surface);
+      box-shadow:0 18px 46px rgba(30,41,59,.17),0 4px 14px rgba(30,41,59,.1);
+    }
+    .stage{display:flex;height:100%;flex-direction:column;padding:20px 24px 32px}
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:78px;
+      height:31px;
+      padding:0 14px;
+      border:1px solid #ccd5dd;
+      border-radius:5px;
+      color:#354255;
+      background:#f4f6f8;
+      font-size:11px;
+      font-weight:650;
+    }
+    .btn.primary{border-color:var(--primary);color:#fff;background:var(--primary)}
+    .actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;width:min(470px,100%);margin-top:auto;align-self:center}
+    .app-head{display:flex;align-items:center;gap:11px}
+    .app-head img{width:34px;height:34px}
+    .app-head h3{margin:0;font-size:15px}
+    .app-head p{margin:3px 0 0;color:var(--muted);font-size:10px}
+    .welcome-stage{position:relative;align-items:center;text-align:center}
+    .welcome-body{position:absolute;left:50%;top:calc(50% - 18px);width:100%;transform:translate(-50%,-50%)}
+    .welcome-stage .actions{justify-content:center;transform:translateY(-8px)}
+    .welcome-body img{width:58px;height:58px;margin-bottom:13px}
+    .welcome-body h2{margin:0;font-size:21px}
+    .welcome-body p{margin:8px 0 11px;color:var(--muted);font-size:11px}
+    .version-pill{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;color:#4540b3;background:var(--primary-soft);font-size:10px;font-weight:650}
+    .field-stage .field-wrap{width:min(470px,100%);margin:auto;align-self:center;transform:translateY(12px)}
+    .field-stage .app-head{width:min(470px,100%);align-self:center;transform:translateY(8px)}
+    .field-stage .actions{transform:translateY(-8px)}
+    .field-wrap label{display:block;margin-bottom:6px;color:#4f5c6c;font-size:10px;font-weight:650}
+    .input-row{display:flex;gap:8px}
+    .input-row input{width:100%;min-width:0;height:34px;padding:0 10px;border:1px solid #cbd4de;border-radius:5px;outline:0;color:#344154;background:#fff;font-size:11px}
+    .space-list{display:grid;gap:5px;margin-top:12px;color:var(--muted);font-size:10px}
+    .space-row{display:flex;align-items:center;gap:8px}
+    .space-row strong{color:#4f5c6c;font-weight:650}
+    .progress-content{width:min(430px,100%);margin:auto}
+    .progress-content .app-head{margin-bottom:30px}
+    .progress-track{height:8px;overflow:hidden;border-radius:4px;background:#e4e8ed}
+    .progress-fill{width:68%;height:100%;background:var(--primary)}
+    .progress-meta{display:flex;align-items:center;justify-content:space-between;margin-top:10px;color:var(--muted);font-size:10px}
+    .finish-stage{position:relative;align-items:center;justify-content:center;text-align:center}
+    .status-check{position:relative;width:48px;height:48px;border-radius:50%;background:var(--success-soft)}
+    .status-check::after{content:"";position:absolute;left:17px;top:11px;width:11px;height:20px;border:solid var(--success);border-width:0 3px 3px 0;transform:rotate(45deg)}
+    .finish-stage h3{margin:12px 0 4px;font-size:16px}
+    .finish-stage>p{margin:0 0 15px;color:var(--muted);font-size:10px}
+    .finish-options{display:grid;gap:8px;width:max-content;margin:0 auto 18px;padding-left:18px;text-align:left}
+    .finish-stage .finish-options{margin-bottom:0}
+    .finish-stage>.status-check,.finish-stage>h3,.finish-stage>p,.finish-stage>.finish-options{transform:translateY(-14px)}
+    .finish-stage>.btn{position:absolute;left:50%;bottom:40px;transform:translateX(-50%)}
+    .check-row{display:flex;align-items:center;gap:8px;color:#465467;font-size:11px}
+    .checkbox{position:relative;width:15px;height:15px;flex:0 0 15px;border:1px solid var(--primary);border-radius:3px;background:var(--primary)}
+    .checkbox::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+    .confirm-mask{position:absolute;inset:0;z-index:4;display:grid;place-items:center;padding:24px;background:rgba(26,34,48,.28);backdrop-filter:blur(3px)}
+    .confirm-mask[hidden]{display:none}
+    .confirm-panel{width:min(330px,100%);padding:21px;border:1px solid rgba(255,255,255,.82);border-radius:7px;background:rgba(248,250,252,.96);box-shadow:0 18px 42px rgba(28,39,55,.2);text-align:left}
+    .confirm-panel h4{margin:0 0 7px;font-size:15px}
+    .confirm-panel p{margin:0;color:var(--muted);font-size:11px;line-height:1.6}
+    .confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+    .version-check-section{margin-top:42px}
+    .version-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+    .version-case{min-width:0}
+    .case-label{margin-bottom:7px;color:#566273;font-size:11px}
+    .case-window{
+      height:270px;
+      overflow:hidden;
+      border:1px solid rgba(100,116,139,.3);
+      border-radius:10px;
+      background:rgba(248,250,252,.96);
+      box-shadow:0 18px 46px rgba(30,41,59,.17),0 4px 14px rgba(30,41,59,.1);
+      backdrop-filter:blur(18px);
+    }
+    .case-stage{display:flex;height:100%;flex-direction:column;padding:24px 26px 28px}
+    .case-brand{display:flex;align-items:center;gap:9px;color:#2f3a4c;font-size:11px;font-weight:750}
+    .case-brand img{width:24px;height:24px}
+    .case-main{margin:auto 0}
+    .case-main h3{margin:0;font-size:17px}
+    .case-versions{display:flex;align-items:center;gap:7px;margin-top:10px;color:#647082;font-size:10px}
+    .case-versions strong{display:inline-flex;align-items:center;height:23px;padding:0 8px;border-radius:4px;color:#4540b3;background:var(--primary-soft);font-weight:700}
+    .case-main p{margin:12px 0 0;color:var(--muted);font-size:10px;line-height:1.65}
+    .case-actions{display:flex;justify-content:flex-end;gap:8px}
+    .case-window.blocked .case-versions strong{color:#a23a3a;background:#fbe8e8}
+    .running-check-section{margin-top:42px}
+    .single-case-frame{display:flex;justify-content:center;padding:28px;border:1px solid rgba(23,32,51,.08);border-radius:7px;background:rgba(248,250,251,.45)}
+    .single-case-frame .case-window{width:min(440px,100%);height:230px}
+    .single-case-frame .case-main p{max-width:330px}
+    .update-prompt-section{margin-top:42px}
+    .prompt-frame{display:flex;justify-content:center;padding:28px;border:1px solid rgba(23,32,51,.08);border-radius:7px;background:rgba(248,250,251,.45)}
+    .prompt-window{
+      width:min(520px,100%);
+      height:260px;
+      overflow:hidden;
+      border:1px solid rgba(100,116,139,.3);
+      border-radius:10px;
+      background:rgba(248,250,252,.96);
+      box-shadow:0 18px 46px rgba(30,41,59,.17),0 4px 14px rgba(30,41,59,.1);
+      backdrop-filter:blur(18px);
+    }
+    .prompt-stage{display:flex;height:100%;flex-direction:column;padding:26px 30px 28px}
+    .prompt-brand{display:flex;align-items:center;gap:9px;color:#2f3a4c;font-size:11px;font-weight:750}
+    .prompt-brand img{width:24px;height:24px}
+    .prompt-main{margin:auto 0}
+    .prompt-main h3{margin:0;font-size:18px}
+    .prompt-version{display:flex;align-items:center;gap:8px;margin-top:10px;color:#5e6a7a;font-size:10px}
+    .prompt-version strong{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;color:#4540b3;background:var(--primary-soft);font-weight:700}
+    .prompt-main p{margin:12px 0 0;color:var(--muted);font-size:10px;line-height:1.65}
+    .prompt-actions{display:flex;justify-content:flex-end;gap:8px}
+    .update-section{margin-top:42px}
+    .update-frame{display:flex;justify-content:center;padding:28px;border:1px solid rgba(23,32,51,.08);border-radius:7px;background:rgba(248,250,251,.45)}
+    .update-window{
+      width:min(520px,100%);
+      height:230px;
+      overflow:hidden;
+      border:1px solid rgba(100,116,139,.3);
+      border-radius:10px;
+      background:#fff;
+      box-shadow:0 18px 46px rgba(30,41,59,.17),0 4px 14px rgba(30,41,59,.1);
+    }
+    .update-stage{display:flex;height:100%;align-items:center;padding:38px 48px;background:#fff}
+    .update-content{width:100%;transform:translateY(-14px)}
+    .update-head{display:flex;align-items:center;gap:12px}
+    .update-head img{width:36px;height:36px}
+    .update-head h3{margin:0;font-size:16px}
+    .update-head p{margin:4px 0 0;color:var(--muted);font-size:10px}
+    .update-stage .progress-track{margin-top:36px}
+    .update-stage .progress-meta{margin-top:9px;font-size:9px}
+    @media(max-width:1050px){.version-grid{grid-template-columns:1fr}}
+    @media(max-width:880px){.flow-grid{grid-template-columns:1fr}.fixed-note{display:none}}
+    @media(max-width:560px){main{width:calc(100% - 20px)}.page-head{padding:12px 14px}.installer-window{height:330px}.stage{padding-inline:18px}.update-frame{padding:14px}.update-stage{padding:30px 26px}}
+  </style>
+</head>
+<body>
+  <header class="page-head">
+    <div class="brand"><img src="../MyTodo.ico" alt="MyTodo"><div><h1>MyTodo 安装与升级样式</h1><p>最终确认稿</p></div></div>
+    <div class="fixed-note">首次安装：四步同尺寸 · 固定窗口 · 不可调整大小</div>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-head"><h2>首次安装</h2><p>欢迎 → 安装位置 → 安装进度 → 安装完成</p></div>
+      <div class="flow-grid">
+        <div>
+          <div class="flow-label"><strong>01</strong> 欢迎</div>
+          <div class="installer-window">
+            <div class="stage welcome-stage">
+              <div class="welcome-body"><img src="../MyTodo.ico" alt=""><h2>欢迎使用 MyTodo</h2><p>记下要做的，留住想要的。</p><span class="version-pill">版本 2.0.8</span></div>
+              <div class="actions"><button class="btn" id="showCancel">取消安装</button><button class="btn primary">开始安装</button></div>
+            </div>
+            <div class="confirm-mask" id="cancelConfirm" hidden><div class="confirm-panel"><h4>确认取消安装？</h4><p>取消后将退出安装程序，MyTodo 不会安装到这台电脑。</p><div class="confirm-actions"><button class="btn" id="confirmCancel">确认取消</button><button class="btn primary" id="continueInstall">继续安装</button></div></div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flow-label"><strong>02</strong> 安装位置</div>
+          <div class="installer-window">
+            <div class="stage field-stage">
+              <div class="app-head"><img src="../MyTodo.ico" alt=""><div><h3>选择安装位置</h3></div></div>
+              <div class="field-wrap"><label>安装到</label><div class="input-row"><input value="D:\Software\MyTodo" readonly><button class="btn">浏览</button></div><div class="space-list"><div class="space-row"><strong>所需空间</strong><span>371 MB</span></div><div class="space-row"><strong>可用空间</strong><span>51.8 GB</span></div></div></div>
+              <div class="actions"><button class="btn">上一步</button><button class="btn primary">安装</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flow-label"><strong>03</strong> 安装进度</div>
+          <div class="installer-window">
+            <div class="stage"><div class="progress-content"><div class="app-head"><img src="../MyTodo.ico" alt=""><div><h3>正在安装 MyTodo</h3><p>版本 2.0.8</p></div></div><div class="progress-track"><div class="progress-fill"></div></div><div class="progress-meta"><span>写入程序文件</span><strong>68%</strong></div></div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flow-label"><strong>04</strong> 安装完成</div>
+          <div class="installer-window">
+            <div class="stage finish-stage"><div class="status-check"></div><h3>安装完成</h3><p>MyTodo 2.0.8 已准备就绪</p><div class="finish-options"><div class="check-row"><span class="checkbox"></span>立即启动 MyTodo</div><div class="check-row"><span class="checkbox"></span>开机自动启动</div></div><button class="btn primary">完成</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="version-check-section">
+      <div class="section-head"><h2>安装包版本检测</h2><p>启动安装包时，根据电脑上已经安装的版本显示对应提示。</p></div>
+      <div class="version-grid">
+        <div class="version-case">
+          <div class="case-label">已安装相同版本</div>
+          <div class="case-window"><div class="case-stage"><div class="case-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</div><div class="case-main"><h3>已安装相同版本</h3><div class="case-versions"><span>当前版本</span><strong>2.0.8</strong></div><p>当前版本与安装包版本相同，无需重新安装。</p></div><div class="case-actions"><button class="btn primary">关闭</button></div></div></div>
+        </div>
+        <div class="version-case">
+          <div class="case-label">已安装更高版本</div>
+          <div class="case-window blocked"><div class="case-stage"><div class="case-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</div><div class="case-main"><h3>无法安装较旧版本</h3><div class="case-versions"><span>已安装</span><strong>2.0.8</strong><span>安装包</span><strong>2.0.7</strong></div><p>为避免程序与数据不兼容，MyTodo 不支持降级安装。</p></div><div class="case-actions"><button class="btn primary">关闭</button></div></div></div>
+        </div>
+        <div class="version-case">
+          <div class="case-label">已安装较低版本</div>
+          <div class="case-window"><div class="case-stage"><div class="case-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</div><div class="case-main"><h3>升级 MyTodo？</h3><div class="case-versions"><span>当前</span><strong>2.0.7</strong><span>升级至</span><strong>2.0.8</strong></div><p>升级过程中会保留现有任务、设置和数据存储位置。</p></div><div class="case-actions"><button class="btn">取消</button><button class="btn primary">升级</button></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="running-check-section">
+      <div class="section-head"><h2>运行状态检测</h2><p>安装开始前发现 MyTodo 仍在运行时显示。</p></div>
+      <div class="single-case-frame">
+        <div class="case-window"><div class="case-stage"><div class="case-brand"><img src="../MyTodo.ico" alt="">MyTodo 安装</div><div class="case-main"><h3>MyTodo 正在运行</h3><p>检测到应用正在运行，请先关闭 MyTodo 后重新安装。</p></div><div class="case-actions"><button class="btn primary">退出安装程序</button></div></div></div>
+      </div>
+    </section>
+
+    <section class="update-prompt-section">
+      <div class="section-head"><h2>发现新版本提示</h2><p>应用正在使用时，由用户决定是否立即更新。</p></div>
+      <div class="prompt-frame">
+        <div class="prompt-window">
+          <div class="prompt-stage">
+            <div class="prompt-brand"><img src="../MyTodo.ico" alt="">MyTodo 更新</div>
+            <div class="prompt-main"><h3>发现新版本</h3><div class="prompt-version"><span>当前版本 2.0.7</span><span>→</span><strong>新版本 2.0.8</strong></div></div>
+            <div class="prompt-actions"><button class="btn">稍后更新</button><button class="btn primary">立即更新</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="update-section">
+      <div class="section-head"><h2>应用内升级安装</h2><p>无标题栏、无关闭按钮，保持紧凑固定窗口。</p></div>
+      <div class="update-frame">
+        <div class="update-window"><div class="update-stage"><div class="update-content"><div class="update-head"><img src="../MyTodo.ico" alt=""><div><h3>正在安装更新</h3><p>MyTodo 2.0.8</p></div></div><div class="progress-track"><div class="progress-fill"></div></div><div class="progress-meta"><span>替换程序文件</span><strong>68%</strong></div></div></div></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const cancelConfirm = document.getElementById("cancelConfirm");
+    document.getElementById("showCancel").addEventListener("click", () => {
+      cancelConfirm.hidden = false;
+      document.getElementById("continueInstall").focus();
+    });
+    document.getElementById("continueInstall").addEventListener("click", () => {
+      cancelConfirm.hidden = true;
+      document.getElementById("showCancel").focus();
+    });
+    document.getElementById("confirmCancel").addEventListener("click", () => {
+      cancelConfirm.hidden = true;
+    });
+    cancelConfirm.addEventListener("click", (event) => {
+      if (event.target === cancelConfirm) cancelConfirm.hidden = true;
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !cancelConfirm.hidden) cancelConfirm.hidden = true;
+    });
+  </script>
+</body>
+</html>

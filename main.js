@@ -2,6 +2,7 @@ const { app, dialog } = require("electron");
 const { applyAutoStartSetting, loadGlobalConfig, setGlobalConfig } = require("./src/main/config");
 const { initializeDataDirectory } = require("./src/main/dataLocation");
 const { consumeInstallerOptions } = require("./src/main/installOptions");
+const { isInstallationInProgress } = require("./src/main/installLock");
 const { registerIpcHandlers } = require("./src/main/ipc");
 const { initializeLogger } = require("./src/main/logger");
 const {
@@ -28,9 +29,14 @@ const {
 
 app.setAppUserModelId("com.nhmt.mytodo");
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const installationInProgress = isInstallationInProgress();
+const hasSingleInstanceLock = !installationInProgress && app.requestSingleInstanceLock();
 
-if (!hasSingleInstanceLock) {
+if (installationInProgress) {
+  // Leave immediately so a launch attempt cannot hold program files open or
+  // make the silent installer mistake the warning window for a running app.
+  app.quit();
+} else if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {

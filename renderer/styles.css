@@ -689,6 +689,13 @@ button{outline:none}
 .confirm-modal{width:370px}
 .confirm-modal>p{margin:0;color:#677384;font-size:12px}
 .close-app-modal{width:min(430px,calc(100vw - 100px))}
+.update-available-modal{width:min(520px,calc(100vw - 80px));min-height:250px}
+.update-modal-brand{display:flex;align-items:center;gap:9px;color:#354255;font-size:11px}
+.update-modal-brand img{width:26px;height:26px}
+.update-modal-main{margin:auto 0}
+.update-modal-main h2{margin:0;color:#172033;font-size:19px}
+.update-version-line{display:flex;align-items:center;gap:9px;margin-top:12px;color:#647082;font-size:11px}
+.update-version-line strong{display:inline-flex;align-items:center;min-height:26px;padding:0 9px;border-radius:5px;color:#4540b3;background:rgba(238,238,255,.82);font-weight:700}
 .close-app-modal>p{margin:0;color:#677384;font-size:12px;line-height:1.6}
 .close-app-option{display:flex;align-items:center;gap:7px;margin-top:16px;color:#4d5a6b;font-size:12px;cursor:pointer}
 .close-app-option input{width:14px;height:14px;margin:0;accent-color:#4f46e5}

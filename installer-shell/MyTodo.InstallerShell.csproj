@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MyTodo.InstallerShell</RootNamespace>
+    <AssemblyName>MyTodo.InstallerShell</AssemblyName>
+    <ApplicationIcon>..\MyTodo.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <MyTodoVersion Condition="'$(MyTodoVersion)' == ''">0.0.0</MyTodoVersion>
+    <Version>$(MyTodoVersion)</Version>
+    <AssemblyVersion>$(MyTodoVersion).0</AssemblyVersion>
+    <FileVersion>$(MyTodoVersion).0</FileVersion>
+    <InformationalVersion>$(MyTodoVersion)</InformationalVersion>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\installer.html" LogicalName="MyTodo.InstallerShell.installer.html" />
+    <EmbeddedResource Include="..\MyTodo.ico" LogicalName="MyTodo.InstallerShell.MyTodo.ico" />
+  </ItemGroup>
+</Project>

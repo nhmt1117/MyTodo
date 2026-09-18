@@ -1,6 +1,6 @@
 {
   "name": "mytodo",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "MyTodo 个人待办与循环提醒工具",
   "main": "main.js",
   "author": "nhmt",
@@ -12,7 +12,8 @@
     "start": "electron .",
     "dev": "electron .",
     "build": "electron-builder",
-    "build:win": "electron-builder --win nsis",
+    "build:win": "node scripts/build-windows.js",
+    "build:win:backend": "electron-builder --win nsis",
     "build:portable": "electron-builder --win portable",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
@@ -69,7 +70,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "MyTodo",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "MyTodo-Backend-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [

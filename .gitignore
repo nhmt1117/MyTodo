@@ -6,6 +6,8 @@ release/
 .*-profile/
 .release-smoke/
 .icon-work/
+installer-shell/bin/
+installer-shell/obj/
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MyTodo 安装</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --ink:#172033;
+      --text:#354255;
+      --muted:#748093;
+      --line:#cbd4de;
+      --surface:#f8fafb;
+      --white:#fff;
+      --primary:#4f46e5;
+      --primary-soft:#eeeeff;
+      --success:#1d9a72;
+      --success-soft:#e4f8f1;
+      --danger:#c94646;
+      font-family:"Microsoft YaHei UI","Segoe UI",sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden}
+    body{
+      color:var(--ink);
+      background:var(--surface);
+      border:1px solid rgba(100,116,139,.34);
+      border-radius:8px;
+      letter-spacing:0;
+      user-select:none;
+    }
+    button,input{font:inherit;letter-spacing:0}
+    button{cursor:pointer}
+    .drag-strip{position:fixed;z-index:20;inset:0 0 auto;height:18px}
+    .screen{position:absolute;inset:0;padding:38px 42px 40px}
+    .screen[hidden]{display:none}
+    .icon{display:block;width:36px;height:36px;object-fit:contain}
+    .icon.large{width:58px;height:58px}
+    .brand{display:flex;align-items:center;gap:12px;color:#263247;font-size:13px;font-weight:700}
+    .brand .icon{width:28px;height:28px}
+    h1,h2,h3,p{margin:0}
+    h1{font-size:21px;line-height:1.35}
+    h2{font-size:20px;line-height:1.4}
+    h3{font-size:16px;line-height:1.45}
+    .muted{color:var(--muted)}
+    .btn{
+      min-width:76px;
+      height:34px;
+      padding:0 16px;
+      border:1px solid var(--line);
+      border-radius:5px;
+      color:var(--text);
+      background:#f4f6f8;
+      font-size:12px;
+      font-weight:650;
+    }
+    .btn:hover{background:#e9edf1}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{border-color:var(--primary);color:#fff;background:var(--primary)}
+    .btn.primary:hover{background:#4338ca}
+    .actions{position:absolute;right:42px;bottom:40px;display:flex;gap:8px}
+
+    .welcome-screen{display:grid;place-items:center;text-align:center;padding-bottom:86px}
+    .welcome-content{transform:translateY(-4px)}
+    .welcome-content .icon{margin:0 auto 13px}
+    .welcome-content p{margin:7px 0 11px;color:var(--muted);font-size:11px}
+    .version-pill{
+      display:inline-flex;
+      align-items:center;
+      height:24px;
+      padding:0 9px;
+      border-radius:4px;
+      color:#4540b3;
+      background:var(--primary-soft);
+      font-size:10px;
+      font-weight:700;
+    }
+    .welcome-screen .actions{right:50%;transform:translateX(50%)}
+
+    .directory-head{display:flex;align-items:center;gap:12px}
+    .directory-form{position:absolute;left:60px;right:38px;top:126px}
+    .directory-form label{display:block;margin-bottom:6px;color:#4f5c6c;font-size:10px;font-weight:700}
+    .input-row{display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:8px}
+    .input-row input{
+      width:100%;height:35px;padding:0 10px;border:1px solid var(--line);border-radius:5px;
+      outline:0;color:#344154;background:#fff;font-size:11px;user-select:text
+    }
+    .space-list{display:grid;gap:5px;margin-top:11px;color:var(--muted);font-size:10px}
+    .space-row{display:flex;align-items:center;gap:8px}
+    .space-row strong{min-width:50px;color:#4f5c6c;font-weight:700}
+
+    .progress-screen{display:grid;align-content:center;padding:0 74px}
+    .progress-content{transform:translateY(-2px)}
+    .progress-head{display:flex;align-items:center;gap:14px;margin-bottom:35px}
+    .progress-head h2{font-size:17px}
+    .progress-head p{margin-top:3px;color:var(--muted);font-size:11px}
+    .progress-track{height:8px;overflow:hidden;border-radius:4px;background:#e4e8ed}
+    .progress-fill{width:0;height:100%;border-radius:4px;background:var(--primary);transition:width .18s ease}
+    .progress-meta{display:flex;justify-content:space-between;margin-top:9px;color:var(--muted);font-size:10px}
+    .progress-meta strong{color:var(--primary)}
+
+    .finish-screen{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:47px}
+    .status-check{
+      position:relative;width:48px;height:48px;border-radius:50%;background:var(--success-soft)
+    }
+    .status-check::after{
+      content:"";position:absolute;left:17px;top:10px;width:11px;height:20px;
+      border:solid var(--success);border-width:0 3px 3px 0;transform:rotate(45deg)
+    }
+    .finish-screen h2{margin-top:11px;font-size:17px}
+    .finish-screen>p{margin-top:4px;color:var(--muted);font-size:10px}
+    .finish-options{display:grid;gap:9px;margin-top:16px;text-align:left}
+    .check-row{display:flex;align-items:center;gap:8px;color:#465467;font-size:11px;cursor:pointer}
+    .check-row input{width:15px;height:15px;margin:0;accent-color:var(--primary)}
+    .finish-screen>.btn{position:absolute;left:50%;bottom:40px;transform:translateX(-50%)}
+    .finish-screen>.btn:active{transform:translate(-50%,1px)}
+
+    .case-screen{display:flex;flex-direction:column}
+    .case-main{margin-top:58px}
+    .case-main h2{font-size:21px}
+    .case-versions{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--primary);font-size:11px}
+    .case-versions strong{
+      display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:4px;
+      color:#4540b3;background:var(--primary-soft);font-size:11px
+    }
+    .case-screen.blocked .case-versions strong{color:#a23a3a;background:#fbe8e8}
+    .case-description{margin-top:16px;color:var(--muted);font-size:11px;line-height:1.65}
+
+    .confirm-mask{
+      position:absolute;z-index:30;inset:0;display:grid;place-items:center;padding:24px;
+      background:rgba(26,34,48,.28);backdrop-filter:blur(3px)
+    }
+    .confirm-mask[hidden]{display:none}
+    .confirm-panel{
+      width:360px;padding:23px 25px;border:1px solid rgba(255,255,255,.82);border-radius:7px;
+      background:rgba(248,250,252,.98);box-shadow:0 18px 42px rgba(28,39,55,.2);text-align:left
+    }
+    .confirm-panel h3{font-size:16px}
+    .confirm-panel p{margin-top:8px;color:var(--muted);font-size:11px;line-height:1.65}
+    .confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:21px}
+
+    body.compact .screen{padding:28px 40px}
+    body.compact .progress-screen{padding:0 60px}
+    body.compact .progress-content{transform:translateY(1px)}
+    body.compact .progress-head{margin-bottom:36px}
+    body.compact .progress-head .icon{width:36px;height:36px}
+    body.compact .progress-head h2{font-size:17px}
+    body.compact .finish-screen{padding-top:20px}
+    body.compact .finish-screen .status-check{width:46px;height:46px}
+    body.compact .finish-screen h2{margin-top:6px}
+    body.compact .finish-screen>.btn{left:auto;right:38px;bottom:26px;transform:none}
+    body.compact .finish-screen>.btn:active{transform:translateY(1px)}
+    body.compact .case-screen{padding:28px 34px}
+    body.compact .case-main{margin-top:24px}
+    body.compact .case-main h2{font-size:18px}
+    body.compact .case-description{margin-top:10px}
+    body.compact .actions{right:34px;bottom:26px}
+    .error-message{max-width:455px;word-break:break-word}
+  </style>
+</head>
+<body>
+  <div class="drag-strip" data-action="drag"></div>
+
+  <section class="screen welcome-screen" data-screen="welcome" hidden>
+    <div class="welcome-content">
+      <img class="icon large" src="{{ICON_DATA_URL}}" alt="">
+      <h1>欢迎使用 MyTodo</h1>
+      <p>记下要做的，留住想要的。</p>
+      <span class="version-pill" data-field="version-pill"></span>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" data-action="show-cancel">取消安装</button>
+      <button class="btn primary" type="button" data-action="start">开始安装</button>
+    </div>
+  </section>
+
+  <section class="screen" data-screen="directory" hidden>
+    <div class="directory-head">
+      <img class="icon" src="{{ICON_DATA_URL}}" alt="">
+      <h2>选择安装位置</h2>
+    </div>
+    <div class="directory-form">
+      <label for="installPath">安装到</label>
+      <div class="input-row">
+        <input id="installPath" readonly>
+        <button class="btn" type="button" data-action="browse">浏览</button>
+      </div>
+      <div class="space-list">
+        <div class="space-row"><strong>所需空间</strong><span data-field="required-space"></span></div>
+        <div class="space-row"><strong>可用空间</strong><span data-field="available-space"></span></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" data-action="back">上一步</button>
+      <button class="btn primary" type="button" data-action="install">安装</button>
+    </div>
+  </section>
+
+  <section class="screen progress-screen" data-screen="progress" hidden>
+    <div class="progress-content">
+      <div class="progress-head">
+        <img class="icon" src="{{ICON_DATA_URL}}" alt="">
+        <div><h2>正在安装 MyTodo</h2><p data-field="progress-version"></p></div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" data-field="progress-fill"></div></div>
+      <div class="progress-meta"><span data-field="progress-status"></span><strong data-field="progress-percent"></strong></div>
+    </div>
+  </section>
+
+  <section class="screen finish-screen" data-screen="finish" hidden>
+    <div class="status-check"></div>
+    <h2>安装完成</h2>
+    <p data-field="finish-version"></p>
+    <div class="finish-options">
+      <label class="check-row"><input id="launchAfterInstall" type="checkbox" checked>立即启动 MyTodo</label>
+      <label class="check-row"><input id="autoStart" type="checkbox">开机自动启动</label>
+    </div>
+    <button class="btn primary" type="button" data-action="finish">完成</button>
+  </section>
+
+  <section class="screen case-screen" data-screen="same" hidden>
+    <div class="brand"><img class="icon" src="{{ICON_DATA_URL}}" alt="">MyTodo 安装</div>
+    <div class="case-main">
+      <h2>已安装相同版本</h2>
+      <div class="case-versions"><span>当前版本</span><strong data-field="same-version"></strong></div>
+      <p class="case-description">当前版本与安装包版本相同，无需重新安装。</p>
+    </div>
+    <div class="actions"><button class="btn primary" type="button" data-action="close">关闭</button></div>
+  </section>
+
+  <section class="screen case-screen blocked" data-screen="downgrade" hidden>
+    <div class="brand"><img class="icon" src="{{ICON_DATA_URL}}" alt="">MyTodo 安装</div>
+    <div class="case-main">
+      <h2>无法安装较旧版本</h2>
+      <div class="case-versions"><span>已安装</span><strong data-field="installed-version"></strong><span>安装包</span><strong data-field="target-version"></strong></div>
+      <p class="case-description">为避免程序与数据不兼容，MyTodo 不支持降级安装。</p>
+    </div>
+    <div class="actions"><button class="btn primary" type="button" data-action="close">关闭</button></div>
+  </section>
+
+  <section class="screen case-screen" data-screen="upgrade" hidden>
+    <div class="brand"><img class="icon" src="{{ICON_DATA_URL}}" alt="">MyTodo 安装</div>
+    <div class="case-main">
+      <h2>升级 MyTodo？</h2>
+      <div class="case-versions"><span>当前版本</span><strong data-field="upgrade-from"></strong><span>升级至</span><strong data-field="upgrade-to"></strong></div>
+      <p class="case-description">升级过程中会保留现有任务、设置和数据存储位置。</p>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" data-action="cancel-upgrade">取消</button>
+      <button class="btn primary" type="button" data-action="upgrade">升级</button>
+    </div>
+  </section>
+
+  <section class="screen case-screen" data-screen="running" hidden>
+    <div class="brand"><img class="icon" src="{{ICON_DATA_URL}}" alt="">MyTodo 安装</div>
+    <div class="case-main">
+      <h2>MyTodo 正在运行</h2>
+      <div class="case-versions"><strong>安装尚未开始</strong></div>
+      <p class="case-description">检测到应用正在运行，请先关闭 MyTodo 后重新安装。</p>
+    </div>
+    <div class="actions"><button class="btn primary" type="button" data-action="exit-running">退出安装程序</button></div>
+  </section>
+
+  <section class="screen progress-screen" data-screen="update-progress" hidden>
+    <div class="progress-content">
+      <div class="progress-head">
+        <img class="icon" src="{{ICON_DATA_URL}}" alt="">
+        <div><h2>正在安装更新</h2><p data-field="update-version"></p></div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" data-field="update-progress-fill"></div></div>
+      <div class="progress-meta"><span data-field="update-progress-status"></span><strong data-field="update-progress-percent"></strong></div>
+    </div>
+  </section>
+
+  <section class="screen finish-screen" data-screen="update-finish" hidden>
+    <div class="status-check"></div>
+    <h2>更新完成</h2>
+    <p>点击完成启动 MyTodo</p>
+    <button class="btn primary" type="button" data-action="finish-update">完成</button>
+  </section>
+
+  <section class="screen case-screen blocked" data-screen="error" hidden>
+    <div class="brand"><img class="icon" src="{{ICON_DATA_URL}}" alt="">MyTodo 安装</div>
+    <div class="case-main">
+      <h2>安装未完成</h2>
+      <p class="case-description error-message" data-field="error-message"></p>
+    </div>
+    <div class="actions"><button class="btn primary" type="button" data-action="close">关闭</button></div>
+  </section>
+
+  <div class="confirm-mask" id="cancelConfirm" hidden>
+    <div class="confirm-panel">
+      <h3>确认取消安装？</h3>
+      <p>取消后将退出安装程序，MyTodo 不会安装到这台电脑。</p>
+      <div class="confirm-actions">
+        <button class="btn" type="button" data-action="cancel-confirmed">确认取消</button>
+        <button class="btn primary" type="button" data-action="continue-install">继续安装</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      let state = {};
+      const cancelConfirm = document.getElementById("cancelConfirm");
+      const field = (name) => document.querySelector(`[data-field="${name}"]`);
+      const setText = (name, value) => { const node = field(name); if (node) node.textContent = value ?? ""; };
+      const post = (action, details = {}) => window.chrome.webview.postMessage({ action, ...details });
+
+      function render(next) {
+        state = next;
+        document.body.classList.toggle("compact", Boolean(state.compact));
+        document.querySelectorAll("[data-screen]").forEach((screen) => {
+          screen.hidden = screen.dataset.screen !== state.screen;
+        });
+
+        setText("version-pill", `版本 ${state.version}`);
+        setText("required-space", state.requiredSpace);
+        setText("available-space", state.availableSpace);
+        setText("progress-version", `MyTodo ${state.version}`);
+        setText("finish-version", `MyTodo ${state.version} 已准备就绪`);
+        setText("same-version", state.version);
+        setText("installed-version", state.installedVersion);
+        setText("target-version", state.version);
+        setText("upgrade-from", state.installedVersion);
+        setText("upgrade-to", state.version);
+        setText("update-version", `MyTodo ${state.version}`);
+        document.getElementById("installPath").value = state.installDirectory ?? "";
+
+        const progress = Math.max(0, Math.min(100, Number(state.extra?.progress ?? 0)));
+        const status = state.extra?.status ?? (state.compact ? "准备更新" : "准备安装");
+        const progressFill = field("progress-fill");
+        const updateProgressFill = field("update-progress-fill");
+        if (progressFill) progressFill.style.width = `${progress}%`;
+        if (updateProgressFill) updateProgressFill.style.width = `${progress}%`;
+        setText("progress-status", status);
+        setText("progress-percent", `${progress}%`);
+        setText("update-progress-status", status);
+        setText("update-progress-percent", `${progress}%`);
+        setText("error-message", state.extra?.message ?? "安装过程中发生错误，请重新运行安装程序。");
+        document.getElementById("autoStart").checked = Boolean(state.autoStart);
+      }
+
+      document.addEventListener("click", (event) => {
+        const control = event.target.closest("[data-action]");
+        if (!control) return;
+        const action = control.dataset.action;
+        if (action === "show-cancel") {
+          cancelConfirm.hidden = false;
+          cancelConfirm.querySelector(".primary").focus();
+          return;
+        }
+        if (action === "continue-install") {
+          cancelConfirm.hidden = true;
+          return;
+        }
+        if (action === "finish") {
+          post(action, {
+            launch: document.getElementById("launchAfterInstall").checked,
+            autoStart: document.getElementById("autoStart").checked,
+          });
+          return;
+        }
+        post(action);
+      });
+
+      cancelConfirm.addEventListener("click", (event) => {
+        if (event.target === cancelConfirm) cancelConfirm.hidden = true;
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        if (!cancelConfirm.hidden) {
+          cancelConfirm.hidden = true;
+        } else if (state.screen === "welcome") {
+          cancelConfirm.hidden = false;
+        } else if (state.screen === "directory") {
+          post("back");
+        }
+      });
+
+      window.installShell = {
+        receive: render,
+        showCancelConfirm: () => { cancelConfirm.hidden = false; },
+      };
+    })();
+  </script>
+</body>
+</html>

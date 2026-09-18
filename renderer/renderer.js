@@ -20,6 +20,7 @@ let refreshPending = false;
 let updateState = null;
 let syncState = null;
 let lastUpdatePhase = "";
+let lastPromptedUpdateVersion = "";
 let backTopTarget = null;
 
 const priorityNames = { high: "高", mid: "中", low: "低" };
@@ -980,6 +981,19 @@ function formatUpdateRate(bytesPerSecond) {
   return (value / 1024 / 1024).toFixed(1) + " MB/s";
 }
 
+function showUpdateAvailableModal(state) {
+  const availableVersion = String(state?.availableVersion || "");
+  if (!availableVersion) return;
+  $("#updateCurrentVersion").textContent = "当前版本 " + (state.currentVersion || "-");
+  $("#updateAvailableVersion").textContent = "新版本 " + availableVersion;
+  $("#updateAvailableModal").classList.remove("hidden");
+  $("#updateNowButton").focus();
+}
+
+function closeUpdateAvailableModal() {
+  $("#updateAvailableModal").classList.add("hidden");
+}
+
 function renderUpdateState(nextState, announce) {
   if (!nextState || typeof nextState !== "object") return;
   updateState = { ...nextState };
@@ -1028,7 +1042,12 @@ function renderUpdateState(nextState, announce) {
   progressBar.style.width = percent + "%";
 
   if (announce && phase !== lastUpdatePhase) {
-    if (phase === "available") showToast("发现 MyTodo " + version + "，可在设置中下载");
+    if (phase === "available") {
+      if (updateState.availableVersion && updateState.availableVersion !== lastPromptedUpdateVersion) {
+        lastPromptedUpdateVersion = updateState.availableVersion;
+        showUpdateAvailableModal(updateState);
+      }
+    }
     if (phase === "installing") showToast(version + " 已下载，正在启动安装程序");
     if (phase === "up-to-date" && updateState.manual) showToast("当前已是最新版本");
     if (phase === "error" && updateState.manual) showToast("检查更新失败，请稍后重试");
@@ -1267,6 +1286,11 @@ function bindSettings() {
     saveConfigPatch({ autoCheckUpdates: event.target.checked });
   });
   $("#updateActionButton").addEventListener("click", handleUpdateAction);
+  $("#updateLaterButton").addEventListener("click", closeUpdateAvailableModal);
+  $("#updateNowButton").addEventListener("click", async () => {
+    closeUpdateAvailableModal();
+    await handleUpdateAction();
+  });
   if (typeof window.electronAPI.onUpdateStatus === "function") {
     window.electronAPI.onUpdateStatus((state) => renderUpdateState(state, true));
   }
@@ -1328,6 +1352,8 @@ function bindWindowEvents() {
       event.preventDefault();
       if (!$("#recoveryKeyModal").classList.contains("hidden")) {
         $("#recoveryKeyModal").classList.add("hidden");
+      } else if (!$("#updateAvailableModal").classList.contains("hidden")) {
+        closeUpdateAvailableModal();
       } else if (!$("#syncEnableModal").classList.contains("hidden")) closeSyncEnableModal();
       else if (!$("#closeAppModal").classList.contains("hidden")) cancelCloseAppModal();
       else window.electronAPI.winClose();
