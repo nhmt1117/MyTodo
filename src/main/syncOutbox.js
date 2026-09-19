@@ -266,7 +266,17 @@ function getSyncOutboxStatus() {
   };
 }
 
+function clearSyncOutbox() {
+  ensureLoaded();
+  assertWritable();
+  const removedCount = outbox.length;
+  outbox = [];
+  saveSyncOutbox();
+  return removedCount;
+}
+
 module.exports = {
+  clearSyncOutbox,
   enqueueTodoDelete,
   enqueueTodoUpsert,
   getBlockedMutations,

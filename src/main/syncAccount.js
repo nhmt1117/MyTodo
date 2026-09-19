@@ -3,7 +3,7 @@ const { safeStorage } = require("electron");
 const { getDataFilePath } = require("./dataLocation");
 const { readJsonWithBackup, writeJsonAtomic } = require("./storage");
 
-const ACCOUNT_SCHEMA_VERSION = 1;
+const ACCOUNT_SCHEMA_VERSION = 4;
 const DEFAULT_SERVER_URL = "http://127.0.0.1:3100/api/v1";
 
 let account = createEmptyAccount();
@@ -18,6 +18,12 @@ function createEmptyAccount() {
     userId: "",
     deviceId: "",
     deviceName: getDefaultDeviceName(),
+    accountType: "RECOVERY_KEY",
+    email: "",
+    emailVerified: false,
+    displayName: "",
+    avatarPreset: "indigo",
+    membership: null,
     refreshTokenEncrypted: "",
     recoveryKeyEncrypted: "",
     cursor: "0",
@@ -59,6 +65,10 @@ function isUuid(value) {
 function normalizeAccount(value = {}) {
   const source = isAccountRecord(value) ? value : {};
   const enabled = source.enabled === true && isUuid(source.userId) && isUuid(source.deviceId);
+  const email = enabled ? String(source.email || "").trim().toLowerCase().slice(0, 254) : "";
+  const accountType = enabled && (source.accountType === "EMAIL" || email)
+    ? "EMAIL"
+    : "RECOVERY_KEY";
   return {
     schemaVersion: ACCOUNT_SCHEMA_VERSION,
     enabled,
@@ -66,6 +76,28 @@ function normalizeAccount(value = {}) {
     userId: enabled ? String(source.userId).toLowerCase() : "",
     deviceId: enabled ? String(source.deviceId).toLowerCase() : "",
     deviceName: Array.from(String(source.deviceName || getDefaultDeviceName())).slice(0, 80).join(""),
+    accountType,
+    email: accountType === "EMAIL" ? email : "",
+    emailVerified: accountType === "EMAIL" && source.emailVerified === true,
+    displayName: enabled ? Array.from(String(source.displayName || "").trim()).slice(0, 40).join("") : "",
+    avatarPreset: ["indigo", "emerald", "rose", "amber", "slate"].includes(source.avatarPreset)
+      ? source.avatarPreset
+      : "indigo",
+    membership: enabled && source.membership && typeof source.membership === "object"
+      ? {
+        planCode: String(source.membership.planCode || "free").slice(0, 40),
+        planName: String(source.membership.planName || "免费版").slice(0, 80),
+        status: String(source.membership.status || "ACTIVE").slice(0, 40),
+        confirmedAt: String(source.membership.confirmedAt || ""),
+        expiresAt: source.membership.expiresAt ? String(source.membership.expiresAt) : null,
+        entitlements: Array.isArray(source.membership.entitlements)
+          ? source.membership.entitlements.slice(0, 100).map((entry) => ({
+            code: String(entry?.code || "").slice(0, 80),
+            enabled: entry?.enabled === true,
+          })).filter((entry) => entry.code)
+          : [],
+      }
+      : null,
     refreshTokenEncrypted: enabled ? String(source.refreshTokenEncrypted || "") : "",
     recoveryKeyEncrypted: enabled ? String(source.recoveryKeyEncrypted || "") : "",
     cursor: /^\d+$/.test(String(source.cursor || "")) ? String(source.cursor) : "0",
@@ -105,6 +137,12 @@ function clonePublicAccount() {
     userId: account.userId,
     deviceId: account.deviceId,
     deviceName: account.deviceName,
+    accountType: account.accountType,
+    email: account.email,
+    emailVerified: account.emailVerified,
+    displayName: account.displayName,
+    avatarPreset: account.avatarPreset,
+    membership: account.membership ? JSON.parse(JSON.stringify(account.membership)) : null,
     cursor: account.cursor,
     initialUploadConfirmed: account.initialUploadConfirmed,
     registeredAt: account.registeredAt,
@@ -182,6 +220,11 @@ function registerSyncAccount(details = {}) {
     userId: details.userId,
     deviceId: details.deviceId,
     deviceName: details.deviceName,
+    accountType: details.accountType,
+    email: details.email,
+    emailVerified: details.emailVerified,
+    displayName: details.displayName,
+    avatarPreset: details.avatarPreset,
     refreshTokenEncrypted: encryptSecret(details.refreshToken),
     recoveryKeyEncrypted: encryptSecret(details.recoveryKey),
     cursor: "0",
@@ -190,6 +233,54 @@ function registerSyncAccount(details = {}) {
   });
   saveSyncAccount();
   accountStatus = { state: "ok", message: "同步账户正常", readOnly: false };
+  return clonePublicAccount();
+}
+
+function updateAccountProfile(details = {}) {
+  ensureLoaded();
+  assertWritable();
+  if (!account.enabled) throw new Error("尚未启用多端同步");
+  const email = String(details.email || "").trim().toLowerCase().slice(0, 254);
+  account.accountType = email ? "EMAIL" : "RECOVERY_KEY";
+  account.email = email;
+  account.emailVerified = !!email && details.emailVerified === true;
+  if (details.displayName !== undefined) {
+    account.displayName = Array.from(String(details.displayName).trim()).slice(0, 40).join("");
+  }
+  if (["indigo", "emerald", "rose", "amber", "slate"].includes(details.avatarPreset)) {
+    account.avatarPreset = details.avatarPreset;
+  }
+  saveSyncAccount();
+  return clonePublicAccount();
+}
+
+function updateMembership(details = {}) {
+  ensureLoaded();
+  assertWritable();
+  if (!account.enabled) throw new Error("尚未启用多端同步");
+  account.membership = normalizeAccount({
+    ...account,
+    membership: {
+      planCode: details.plan?.code,
+      planName: details.plan?.name,
+      status: details.status,
+      confirmedAt: details.confirmedAt,
+      expiresAt: details.expiresAt,
+      entitlements: details.entitlements,
+    },
+  }).membership;
+  saveSyncAccount();
+  return clonePublicAccount();
+}
+
+function clearSyncAccount() {
+  ensureLoaded();
+  assertWritable();
+  const serverUrl = account.serverUrl;
+  account = createEmptyAccount();
+  account.serverUrl = serverUrl;
+  saveSyncAccount();
+  accountStatus = { state: "ok", message: "同步账户已退出", readOnly: false };
   return clonePublicAccount();
 }
 
@@ -226,6 +317,7 @@ function getSyncAccountStatus() {
 module.exports = {
   DEFAULT_SERVER_URL,
   canStoreSyncCredentials,
+  clearSyncAccount,
   getDefaultDeviceName,
   getRecoveryKey,
   getSyncAccount,
@@ -236,5 +328,7 @@ module.exports = {
   registerSyncAccount,
   saveSyncAccount,
   updateRefreshToken,
+  updateAccountProfile,
+  updateMembership,
   updateSyncCursor,
 };

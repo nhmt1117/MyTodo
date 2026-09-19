@@ -43,6 +43,9 @@ test("sync credentials are encrypted and survive reload", (t) => {
     userId: "976561b7-a599-4b2d-b753-7e9325042881",
     deviceId: "f8978649-403b-4105-8121-b4d42ac743f7",
     deviceName: "Test PC",
+    accountType: "EMAIL",
+    email: "User@Example.com",
+    emailVerified: false,
     refreshToken: "refresh-secret-value",
     recoveryKey: "recovery-secret-value",
     initialUploadConfirmed: true,
@@ -57,6 +60,15 @@ test("sync credentials are encrypted and survive reload", (t) => {
   assert.equal(account.loadSyncAccount().enabled, true);
   assert.equal(account.getSyncCredentials().refreshToken, "refresh-secret-value");
   assert.equal(account.getRecoveryKey(), "recovery-secret-value");
+  assert.equal(account.getSyncAccount().serverUrl, "http://localhost:3100/api/v1");
+  assert.equal(account.getSyncAccount().accountType, "EMAIL");
+  assert.equal(account.getSyncAccount().email, "user@example.com");
+
+  account.updateAccountProfile({ email: "user@example.com", emailVerified: true });
+  assert.equal(account.getSyncAccount().emailVerified, true);
+  account.clearSyncAccount();
+  assert.equal(account.getSyncAccount().enabled, false);
+  assert.equal(account.getSyncAccount().email, "");
   assert.equal(account.getSyncAccount().serverUrl, "http://localhost:3100/api/v1");
 });
 

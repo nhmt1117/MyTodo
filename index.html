@@ -23,8 +23,9 @@
         <div class="nav-list">
           <button type="button" class="nav-item active" data-page="home" title="待办" aria-label="待办"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9 20v-6h6v6"/></svg></button>
           <button type="button" class="nav-item" data-page="calendar" title="日历" aria-label="日历"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></button>
+          <button type="button" class="nav-item" data-page="setting" title="设置" aria-label="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg></button>
         </div>
-        <button type="button" class="nav-item bottom-nav-item" data-page="setting" title="设置" aria-label="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg></button>
+        <button type="button" class="nav-item bottom-nav-item account-nav-button" id="accountNavButton" data-page="account" title="账户中心" aria-label="账户中心"><span id="accountNavAvatar" aria-hidden="true">未</span><i id="accountNavState" aria-hidden="true"></i></button>
       </aside>
 
       <main class="main-panel glass">
@@ -76,6 +77,31 @@
             <section class="settings-section hidden" id="aboutSetting"><h2>关于</h2><p>版本与更新</p><div class="setting-block"><div class="setting-row"><div class="about-logo"><img src="./assets/mytodo-icon-source.png" alt=""><div><strong>MyTodo</strong><span>个人待办与循环提醒工具</span></div></div><div class="about-update"><div class="about-version-line"><span id="appVersion">-</span><button type="button" class="btn secondary update-action" id="updateActionButton" data-action="check">检查更新</button></div><div class="update-progress-detail hidden" id="updateProgressDetail" aria-live="polite">正在下载 0%</div><div class="update-progress hidden" id="updateProgress" role="progressbar" aria-label="更新下载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="updateProgressBar"></span></div></div></div><div class="setting-row"><div class="setting-copy"><strong>自动检查更新</strong><span>启动后和运行期间定时检查 Windows 正式版</span></div><label class="switch"><input type="checkbox" id="autoCheckUpdatesCheck"><span></span></label></div></div></section>
           </div></div>
         </section>
+
+        <section class="page account-page" id="account">
+          <div class="account-signed-out page-scroll" id="accountSignedOut">
+            <div class="account-welcome-avatar"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
+            <h1>连接你的 MyTodo</h1>
+            <p>登录后在多台设备间同步待办。网络不可用时，本机待办仍可正常查看和编辑。</p>
+            <div class="account-welcome-actions"><button type="button" class="btn primary" id="openAccountLogin">登录</button><button type="button" class="btn secondary" id="openAccountRegister">创建账户</button></div>
+            <span class="account-local-note">当前处于本地模式，不会自动上传数据</span>
+          </div>
+          <div class="account-signed-in page-scroll hidden" id="accountSignedIn">
+            <section class="account-profile-banner">
+              <div class="account-profile-top"><span>个人主页</span><span class="account-sync-badge" id="accountSyncBadge">同步正常</span></div>
+              <div class="account-profile-identity"><div class="account-large-avatar" id="accountLargeAvatar">M</div><div><h1 id="accountDisplayName">MyTodo 用户</h1><p id="accountEmailSummary"></p><div class="account-badges"><span id="accountPlanBadge">免费版</span><span id="accountVerifiedBadge">邮箱未验证</span><span id="accountJoinedBadge"></span></div></div></div>
+            </section>
+            <nav class="account-tabs" aria-label="账户栏目"><button type="button" class="active">个人资料</button><button type="button" id="accountRefreshDevices">同步与设备</button><button type="button" id="accountOpenPassword">账户安全</button><button type="button">会员权益</button></nav>
+            <div class="account-content">
+              <section class="account-stats"><div><strong id="accountCompletedCount">0</strong><span>已完成待办</span></div><div><strong id="accountDeviceCount">0</strong><span>已连接设备</span></div><div><strong id="accountPendingCount">0</strong><span>等待同步</span></div></section>
+              <section class="account-section"><header><strong>基本资料</strong><button type="button" id="accountEditProfile">编辑资料</button></header><div class="account-info-grid"><div><span>昵称</span><strong id="accountNickname">MyTodo 用户</strong></div><div><span>邮箱</span><strong id="accountEmail">-</strong></div><div><span>手机号</span><strong class="muted" id="accountPhone">未绑定 · 功能预留</strong></div><div><span>登录密码</span><strong>已设置</strong><button type="button" id="accountChangePassword">修改</button></div></div><div class="account-verify-action hidden" id="accountVerifyAction"><span>验证邮箱后可安全找回账户</span><button type="button" class="btn secondary" id="accountVerifyEmail">验证邮箱</button></div></section>
+              <section class="account-section account-membership"><span class="account-member-mark">M</span><div><strong id="accountPlanName">免费版</strong><p id="accountPlanSummary">基础待办、本地提醒和离线使用保持可用；会员能力将在后续版本开放。</p></div><button type="button" class="btn secondary" disabled>会员功能即将开放</button></section>
+              <section class="account-section"><header><strong>账户安全</strong></header><div class="account-security-actions"><div><strong>其他设备登录</strong><span>让当前电脑以外的设备全部退出账户</span><button type="button" class="btn secondary" id="accountLogoutOthers">退出其他设备</button></div><div><strong>注销云端账户</strong><span>删除云端账户与同步数据，本机待办将继续保留</span><button type="button" class="btn secondary danger-text" id="accountDeleteCloud">注销账户</button></div></div></section>
+              <section class="account-section"><header><strong>已连接设备</strong><button type="button" id="accountReloadDevices">刷新</button></header><div class="account-device-list" id="accountDeviceList"><span class="account-empty">正在读取设备</span></div></section>
+              <button type="button" class="account-logout-button" id="accountLogout">退出登录</button>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   </div>
@@ -109,9 +135,12 @@
   <div class="modal-mask hidden" id="syncConflictModal"><section class="modal-box conflict-modal"><header class="modal-header"><div><h2>处理同步冲突</h2><p id="conflictProgress">正在读取冲突</p></div><button type="button" class="close-button" id="closeSyncConflict" title="关闭" aria-label="关闭"></button></header><div class="conflict-content"><div class="conflict-version local"><div class="conflict-version-head"><strong>本机版本</strong><span>标题和备注可修改后保留</span></div><label for="conflictLocalTitle">标题</label><input id="conflictLocalTitle" maxlength="80"><label for="conflictLocalDescription">备注描述</label><textarea id="conflictLocalDescription" maxlength="500"></textarea><span class="conflict-meta" id="conflictLocalMeta"></span></div><div class="conflict-version cloud"><div class="conflict-version-head"><strong>云端版本</strong><span>来自其他设备的最新修改</span></div><label>标题</label><div class="conflict-readonly" id="conflictCloudTitle"></div><label>备注描述</label><div class="conflict-readonly conflict-description" id="conflictCloudDescription"></div><span class="conflict-meta" id="conflictCloudMeta"></span></div></div><footer class="modal-footer"><button type="button" class="btn secondary" id="useCloudConflict">采用云端版本</button><button type="button" class="btn primary" id="keepLocalConflict">保留本机版本</button></footer></section></div>
   <div class="modal-mask hidden" id="updateAvailableModal"><section class="modal-box update-available-modal" role="dialog" aria-modal="true" aria-labelledby="updateAvailableTitle"><div class="update-modal-brand"><img src="./assets/mytodo-icon-source.png" alt=""><strong>MyTodo 更新</strong></div><div class="update-modal-main"><h2 id="updateAvailableTitle">发现新版本</h2><div class="update-version-line"><span id="updateCurrentVersion">当前版本 -</span><span aria-hidden="true">→</span><strong id="updateAvailableVersion">新版本 -</strong></div></div><footer class="modal-footer"><button type="button" class="btn secondary" id="updateLaterButton">稍后更新</button><button type="button" class="btn primary" id="updateNowButton">立即更新</button></footer></section></div>
   <div class="modal-mask hidden" id="closeAppModal"><section class="modal-box close-app-modal" role="dialog" aria-modal="true" aria-labelledby="closeAppTitle"><header class="modal-header"><h2 id="closeAppTitle">关闭 MyTodo？</h2></header><p>最小化后，MyTodo 会继续在系统托盘中运行并检查提醒。</p><label class="close-app-option"><input type="checkbox" id="closeAppDontAsk">不再提示</label><footer class="modal-footer"><button type="button" class="btn secondary" id="closeToTrayButton">最小化至系统托盘，不退出程序</button><button type="button" class="btn primary" id="quitAppButton">退出程序</button></footer></section></div>
+  <div class="modal-mask hidden" id="accountAuthModal"><section class="modal-box account-auth-modal" role="dialog" aria-modal="true" aria-labelledby="accountAuthTitle"><header class="modal-header"><div><h2 id="accountAuthTitle">登录 MyTodo</h2><p id="accountAuthSubtitle">同步待办，同时保留完整离线能力</p></div><button type="button" class="close-button" id="closeAccountAuth" title="关闭" aria-label="关闭"></button></header><div id="accountAuthContent"></div></section></div>
+  <div class="modal-mask hidden" id="accountLegalModal"><section class="modal-box account-legal-modal" role="dialog" aria-modal="true" aria-labelledby="accountLegalTitle"><header class="modal-header"><h2 id="accountLegalTitle">用户协议</h2><button type="button" class="close-button" id="closeAccountLegal" title="关闭" aria-label="关闭"></button></header><div class="account-legal-content" id="accountLegalContent"></div><footer class="modal-footer"><button type="button" class="btn primary" id="confirmAccountLegal">我已阅读</button></footer></section></div>
   <div class="drop-mask hidden" id="globalDropMask"></div><div class="drop-menu hidden" id="globalDrop"></div>
 
   <script src="./src/shared/recurrence.js"></script>
+  <script src="./renderer/account.js"></script>
   <script src="./renderer/renderer.js"></script>
 </body>
 </html>

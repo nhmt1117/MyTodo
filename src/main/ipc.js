@@ -123,8 +123,45 @@ function registerIpcHandlers() {
   ipcMain.handle("get-storage-status", async () => supportTools.getStorageStatus());
   ipcMain.handle("get-sync-state", async () => syncManager.getSyncState());
   ipcMain.handle("enable-sync", async (_event, options) => syncManager.enableSync(options));
+  ipcMain.handle("register-sync-account", async (_event, options) => {
+    return syncManager.registerEmailAccount(options);
+  });
+  ipcMain.handle("request-sync-registration-code", async (_event, options) => {
+    return syncManager.requestRegistrationCode(options);
+  });
+  ipcMain.handle("login-sync-account", async (_event, options) => {
+    return syncManager.loginEmailAccount(options);
+  });
   ipcMain.handle("recover-sync-account", async (_event, options) => {
     return syncManager.recoverSyncAccount(options);
+  });
+  ipcMain.handle("bind-sync-email", async (_event, options) => {
+    return syncManager.bindSyncEmail(options);
+  });
+  ipcMain.handle("get-sync-account-profile", async () => syncManager.getSyncAccountProfile());
+  ipcMain.handle("get-membership-state", async () => syncManager.getMembershipState());
+  ipcMain.handle("update-sync-account-profile", async (_event, options) => {
+    return syncManager.updateSyncAccountProfile(options);
+  });
+  ipcMain.handle("change-sync-password", async (_event, options) => {
+    return syncManager.changeSyncPassword(options);
+  });
+  ipcMain.handle("request-sync-email-verification", async () => {
+    return syncManager.requestSyncEmailVerification();
+  });
+  ipcMain.handle("verify-sync-email", async (_event, options) => {
+    return syncManager.verifySyncEmail(options);
+  });
+  ipcMain.handle("request-sync-password-reset", async (_event, options) => {
+    return syncManager.requestSyncPasswordReset(options);
+  });
+  ipcMain.handle("reset-sync-password", async (_event, options) => {
+    return syncManager.resetSyncPassword(options);
+  });
+  ipcMain.handle("logout-sync-account", async () => syncManager.logoutSyncAccount());
+  ipcMain.handle("logout-other-sync-devices", async () => syncManager.logoutOtherSyncDevices());
+  ipcMain.handle("delete-sync-account", async (_event, options) => {
+    return syncManager.deleteSyncAccount(options);
   });
   ipcMain.handle("sync-now", async () => syncManager.syncNow({ manual: true }));
   ipcMain.handle("create-pairing-session", async (_event, options) => {

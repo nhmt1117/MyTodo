@@ -33,6 +33,9 @@ function createHarness(fetchImpl) {
     userId: "",
     deviceId: "",
     deviceName: "Test PC",
+    accountType: "RECOVERY_KEY",
+    email: "",
+    emailVerified: false,
     cursor: "0",
   };
   let refreshToken = "";
@@ -49,14 +52,56 @@ function createHarness(fetchImpl) {
         userId: details.userId,
         deviceId: details.deviceId,
         deviceName: details.deviceName,
+        accountType: details.accountType || "RECOVERY_KEY",
+        email: details.email || "",
+        emailVerified: details.emailVerified === true,
+        displayName: details.displayName || "",
+        avatarPreset: details.avatarPreset || "indigo",
         cursor: "0",
       });
       refreshToken = details.refreshToken;
+    },
+    updateAccountProfile: (details) => {
+      Object.assign(account, {
+        accountType: details.email ? "EMAIL" : "RECOVERY_KEY",
+        email: details.email || "",
+        emailVerified: details.emailVerified === true,
+        ...(details.displayName !== undefined ? { displayName: details.displayName } : {}),
+        ...(details.avatarPreset !== undefined ? { avatarPreset: details.avatarPreset } : {}),
+      });
+      return { ...account };
+    },
+    updateMembership: (details) => {
+      account.membership = {
+        planCode: details.plan.code,
+        planName: details.plan.name,
+        status: details.status,
+        entitlements: details.entitlements,
+      };
+      return { ...account };
+    },
+    clearSyncAccount: () => {
+      Object.assign(account, {
+        enabled: false,
+        userId: "",
+        deviceId: "",
+        accountType: "RECOVERY_KEY",
+        email: "",
+        emailVerified: false,
+        cursor: "0",
+      });
+      refreshToken = "";
+      return { ...account };
     },
     updateRefreshToken: (value) => { refreshToken = value; },
     updateSyncCursor: (value) => { account.cursor = String(value); },
   };
   const outbox = {
+    clearSyncOutbox: () => {
+      const count = items.length;
+      items.splice(0, items.length);
+      return count;
+    },
     enqueueTodoUpsert: (entry) => {
       const mutation = {
         mutationId: "a1bc9b49-0877-46ca-8766-e235ee9ab7f8",
@@ -126,6 +171,11 @@ function createHarness(fetchImpl) {
       todo.cloudRevision = Number(revision);
       todo.syncState = "pending";
       return { ...todo };
+    },
+    resetTodoSyncState: () => {
+      todo.cloudRevision = 0;
+      todo.syncState = "local";
+      return 1;
     },
   };
   const manager = createSyncManager({
@@ -216,6 +266,236 @@ test("network failure keeps local data and queued mutations", async () => {
   assert.equal(result.phase, "offline");
   assert.equal(harness.todo.text, "Existing task");
   assert.equal(harness.items.length, 1);
+});
+
+test("email account APIs keep passwords ephemeral and logout preserves local tasks", async () => {
+  const calls = [];
+  const harness = createHarness(async (url, options) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, method: options.method, body });
+    if (url.endsWith("/auth/request-registration-code")) {
+      return jsonResponse({ accepted: true }, 202);
+    }
+    if (url.endsWith("/auth/register")) {
+      return jsonResponse({
+        userId: "976561b7-a599-4b2d-b753-7e9325042881",
+        account: { email: "user@example.com", emailVerified: false },
+        device: {
+          id: "f8978649-403b-4105-8121-b4d42ac743f7",
+          name: "Test PC",
+        },
+        recoveryKey: "email-account-recovery-key",
+        accessToken: "access-token",
+        accessTokenExpiresInSeconds: 900,
+        refreshToken: "refresh-token",
+      }, 201);
+    }
+    if (url.endsWith("/auth/login")) {
+      return jsonResponse({
+        userId: "976561b7-a599-4b2d-b753-7e9325042881",
+        account: { email: "user@example.com", emailVerified: true },
+        device: {
+          id: "4f3129dc-3cce-476f-ac80-c87fefba17e5",
+          name: "Test PC",
+        },
+        accessToken: "login-access-token",
+        accessTokenExpiresInSeconds: 900,
+        refreshToken: "login-refresh-token",
+      });
+    }
+    if (url.endsWith("/sync/push")) {
+      const mutation = body.mutations[0];
+      return jsonResponse({ results: [{
+        mutationId: mutation.mutationId,
+        entityId: mutation.entityId,
+        status: "applied",
+        appliedRevision: 1,
+      }] });
+    }
+    if (url.includes("/sync/pull")) {
+      return jsonResponse({ changes: [], nextCursor: "1", hasMore: false });
+    }
+    if (url.endsWith("/auth/me") && options.method === "DELETE") {
+      return { ok: true, status: 204, text: async () => "" };
+    }
+    if (url.endsWith("/auth/me") && options.method === "PATCH") {
+      return jsonResponse({
+        userId: harness.account.userId,
+        accountType: "EMAIL",
+        email: "user@example.com",
+        emailVerified: true,
+        displayName: body.displayName,
+        avatarPreset: body.avatarPreset,
+        phone: null,
+      });
+    }
+    if (url.endsWith("/auth/me")) {
+      return jsonResponse({
+        userId: harness.account.userId,
+        accountType: "EMAIL",
+        email: "user@example.com",
+        emailVerified: true,
+        displayName: "MyTodo User",
+        avatarPreset: "indigo",
+      });
+    }
+    if (url.endsWith("/auth/change-password")) {
+      return jsonResponse({ revokedDeviceCount: 2 });
+    }
+    if (url.endsWith("/membership/me")) {
+      return jsonResponse({
+        plan: { code: "free", name: "免费版" },
+        status: "ACTIVE",
+        entitlements: [{ code: "cloud_sync", enabled: true }],
+      });
+    }
+    if (url.endsWith("/auth/request-email-verification")) {
+      return jsonResponse({ accepted: true }, 202);
+    }
+    if (url.endsWith("/auth/verify-email")) {
+      return jsonResponse({ email: "user@example.com", emailVerified: true });
+    }
+    if (url.endsWith("/auth/forgot-password")) {
+      return jsonResponse({ accepted: true }, 202);
+    }
+    if (url.endsWith("/auth/reset-password")) {
+      return jsonResponse({ reset: true, revokedDeviceCount: 1 });
+    }
+    if (url.endsWith("/auth/logout")) {
+      return { ok: true, status: 204, text: async () => "" };
+    }
+    if (url.endsWith("/auth/logout-other-devices")) {
+      return jsonResponse({ revokedDeviceCount: 2 });
+    }
+    throw new Error("Unexpected request " + options.method + " " + url);
+  });
+
+  assert.deepEqual(await harness.manager.requestRegistrationCode({
+    serverUrl: harness.account.serverUrl,
+    email: "User@Example.com",
+  }), { accepted: true });
+
+  const result = await harness.manager.registerEmailAccount({
+    serverUrl: harness.account.serverUrl,
+    email: "User@Example.com",
+    password: "temporary-password-123",
+    code: "123456",
+    confirmExistingUpload: true,
+  });
+  assert.equal(result.recoveryKey, "email-account-recovery-key");
+  assert.equal(harness.account.accountType, "EMAIL");
+  assert.equal(harness.account.email, "user@example.com");
+  assert.equal(Object.prototype.hasOwnProperty.call(harness.account, "password"), false);
+
+  const profile = await harness.manager.getSyncAccountProfile();
+  assert.equal(profile.emailVerified, true);
+  assert.equal(harness.account.emailVerified, true);
+  const updatedProfile = await harness.manager.updateSyncAccountProfile({
+    displayName: "Planner",
+    avatarPreset: "emerald",
+  });
+  assert.equal(updatedProfile.profile.displayName, "Planner");
+  assert.equal(harness.account.displayName, "Planner");
+  assert.equal(harness.account.avatarPreset, "emerald");
+  const membership = await harness.manager.getMembershipState();
+  assert.equal(membership.plan.code, "free");
+  assert.equal(harness.account.membership.planName, "免费版");
+  assert.deepEqual(
+    await harness.manager.changeSyncPassword({
+      currentPassword: "temporary-password-123",
+      newPassword: "changed-password-456",
+    }),
+    { revokedDeviceCount: 2 },
+  );
+  assert.deepEqual(await harness.manager.requestSyncEmailVerification(), { accepted: true });
+  const verification = await harness.manager.verifySyncEmail({ code: "123456" });
+  assert.equal(verification.profile.emailVerified, true);
+  assert.equal(harness.account.emailVerified, true);
+  assert.deepEqual(await harness.manager.logoutOtherSyncDevices(), { revokedDeviceCount: 2 });
+
+  const logoutState = await harness.manager.logoutSyncAccount();
+  assert.equal(logoutState.phase, "disabled");
+  assert.equal(harness.account.enabled, false);
+  assert.equal(harness.todo.text, "Existing task");
+  assert.equal(harness.todo.cloudRevision, 0);
+  assert.equal(harness.todo.syncState, "local");
+  assert.equal(harness.items.length, 0);
+  assert.equal(calls.find((call) => call.url.endsWith("/auth/register")).body.email,
+    "user@example.com");
+  assert.equal(calls.find((call) => call.url.endsWith("/auth/register")).body.code,
+    "123456");
+  assert.equal(calls.filter((call) => JSON.stringify(call).includes("temporary-password-123")).length,
+    2);
+
+  const loginState = await harness.manager.loginEmailAccount({
+    serverUrl: harness.account.serverUrl,
+    email: "USER@EXAMPLE.COM",
+    password: "changed-password-456",
+    confirmExistingUpload: true,
+  });
+  assert.equal(loginState.account.email, "user@example.com");
+  assert.equal(Object.prototype.hasOwnProperty.call(loginState, "recoveryKey"), false);
+  assert.equal(harness.account.enabled, true);
+  assert.ok(calls.some((call) => call.url.endsWith("/auth/login")));
+
+  assert.deepEqual(await harness.manager.requestSyncPasswordReset({
+    serverUrl: harness.account.serverUrl,
+    email: "User@Example.com",
+  }), { accepted: true });
+  assert.deepEqual(await harness.manager.resetSyncPassword({
+    serverUrl: harness.account.serverUrl,
+    email: "User@Example.com",
+    code: "654321",
+    newPassword: "reset-password-789",
+  }), { reset: true, revokedDeviceCount: 1 });
+  assert.equal(harness.account.enabled, false);
+  assert.equal(harness.todo.text, "Existing task");
+  assert.equal(harness.todo.syncState, "local");
+
+  await harness.manager.loginEmailAccount({
+    serverUrl: harness.account.serverUrl,
+    email: "user@example.com",
+    password: "reset-password-789",
+    confirmExistingUpload: true,
+  });
+  const deletedState = await harness.manager.deleteSyncAccount({ password: "reset-password-789" });
+  assert.equal(deletedState.phase, "disabled");
+  assert.equal(harness.account.enabled, false);
+  assert.equal(harness.todo.text, "Existing task");
+});
+
+test("existing recovery-key accounts can bind an email login", async () => {
+  const calls = [];
+  const harness = createHarness(async (url, options) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, method: options.method, body });
+    if (url.endsWith("/auth/refresh")) {
+      return jsonResponse({
+        accessToken: "fresh-access-token",
+        accessTokenExpiresInSeconds: 900,
+        refreshToken: "next-refresh-token",
+      });
+    }
+    if (url.endsWith("/auth/bind-email")) {
+      return jsonResponse({ email: "bound@example.com", emailVerified: false });
+    }
+    throw new Error("Unexpected request " + options.method + " " + url);
+  });
+  Object.assign(harness.account, {
+    enabled: true,
+    userId: "976561b7-a599-4b2d-b753-7e9325042881",
+    deviceId: "f8978649-403b-4105-8121-b4d42ac743f7",
+  });
+  harness.setRefreshToken("refresh-token");
+
+  const result = await harness.manager.bindSyncEmail({
+    email: "Bound@Example.com",
+    password: "bound-password-123",
+  });
+  assert.equal(result.profile.email, "bound@example.com");
+  assert.equal(harness.account.accountType, "EMAIL");
+  assert.equal(harness.account.email, "bound@example.com");
+  assert.ok(calls.some((call) => call.url.endsWith("/auth/bind-email")));
 });
 
 test("account recovery, phone pairing and device removal use the authenticated API", async () => {

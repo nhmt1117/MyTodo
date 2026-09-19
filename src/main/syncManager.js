@@ -247,6 +247,113 @@ function createSyncManager(options = {}) {
     }
   }
 
+  function prepareAccountSetup(details = {}, confirmationMessage) {
+    if (details.confirmExistingUpload !== true) throw new Error(confirmationMessage);
+    if (accountStore.getSyncAccount().enabled) {
+      throw new Error("当前电脑已经启用多端同步");
+    }
+    if (typeof accountStore.canStoreSyncCredentials === "function" &&
+      !accountStore.canStoreSyncCredentials()) {
+      throw new Error("Windows 安全存储当前不可用，暂时不能登录同步账户");
+    }
+    return {
+      serverUrl: accountStore.normalizeServerUrl(details.serverUrl),
+      deviceName: String(details.deviceName || accountStore.getDefaultDeviceName()).trim(),
+    };
+  }
+
+  function normalizeEmailCredentials(details = {}) {
+    const email = String(details.email || "").trim().toLowerCase();
+    const password = String(details.password || "");
+    if (!email || !email.includes("@") || email.length > 254) {
+      throw new Error("请输入有效的邮箱地址");
+    }
+    if (password.length < 8 || password.length > 128) {
+      throw new Error("密码长度需要为 8 至 128 个字符");
+    }
+    return { email, password };
+  }
+
+  function normalizeEmail(details = {}) {
+    const email = String(details.email || "").trim().toLowerCase();
+    if (!email || !email.includes("@") || email.length > 254) {
+      throw new Error("请输入有效的邮箱地址");
+    }
+    return email;
+  }
+
+  async function activateEmailAccount(details, endpoint, progressMessage) {
+    const { serverUrl, deviceName } = prepareAccountSetup(
+      details,
+      "请先确认合并本机现有待办",
+    );
+    const { email, password } = normalizeEmailCredentials(details);
+    publish({ phase: "connecting", message: progressMessage, lastError: "", manual: true });
+    try {
+      const registration = await request(serverUrl, endpoint, {
+        method: "POST",
+        body: {
+          email,
+          password,
+          ...(endpoint === "/auth/register" ? { code: String(details.code || "").trim() } : {}),
+          platform: "WINDOWS",
+          deviceName,
+        },
+      });
+      accountStore.registerSyncAccount({
+        serverUrl,
+        userId: registration.userId,
+        deviceId: registration.device?.id,
+        deviceName: registration.device?.name || deviceName,
+        accountType: "EMAIL",
+        email: registration.account?.email || email,
+        emailVerified: registration.account?.emailVerified === true,
+        displayName: registration.account?.displayName || "",
+        avatarPreset: registration.account?.avatarPreset || "indigo",
+        refreshToken: registration.refreshToken,
+        recoveryKey: registration.recoveryKey,
+        initialUploadConfirmed: true,
+      });
+      rememberAccessToken(registration);
+      queueExistingTodos();
+      const syncState = await syncNow({ manual: true });
+      return {
+        ...syncState,
+        ...(registration.recoveryKey
+          ? { recoveryKey: String(registration.recoveryKey) }
+          : {}),
+      };
+    } catch (error) {
+      publish({
+        phase: "disabled",
+        message: endpoint === "/auth/register" ? "注册同步账户失败" : "登录同步账户失败",
+        lastError: errorMessage(error),
+        manual: true,
+      });
+      throw error;
+    }
+  }
+
+  function registerEmailAccount(details = {}) {
+    if (!/^\d{6}$/.test(String(details.code || "").trim())) {
+      throw new Error("请输入六位邮箱验证码");
+    }
+    return activateEmailAccount(details, "/auth/register", "正在注册同步账户");
+  }
+
+  function requestRegistrationCode(details = {}) {
+    const email = normalizeEmail(details);
+    const serverUrl = accountStore.normalizeServerUrl(details.serverUrl);
+    return request(serverUrl, "/auth/request-registration-code", {
+      method: "POST",
+      body: { email },
+    });
+  }
+
+  function loginEmailAccount(details = {}) {
+    return activateEmailAccount(details, "/auth/login", "正在登录同步账户");
+  }
+
   async function enableSync(details = {}) {
     if (details.confirmExistingUpload !== true) {
       throw new Error("请先确认上传现有本地待办");
@@ -335,6 +442,147 @@ function createSyncManager(options = {}) {
       });
       throw error;
     }
+  }
+
+  async function bindSyncEmail(details = {}) {
+    const { email, password } = normalizeEmailCredentials(details);
+    const profile = await authorizedRequest("/auth/bind-email", {
+      method: "POST",
+      body: { email, password },
+    });
+    accountStore.updateAccountProfile(profile);
+    return { profile, state: publish({ message: "邮箱账户已绑定", lastError: "" }) };
+  }
+
+  async function getSyncAccountProfile() {
+    const profile = await authorizedRequest("/auth/me");
+    accountStore.updateAccountProfile(profile);
+    return profile;
+  }
+
+  async function getMembershipState() {
+    const membership = await authorizedRequest("/membership/me");
+    if (typeof accountStore.updateMembership === "function") accountStore.updateMembership(membership);
+    return membership;
+  }
+
+  async function updateSyncAccountProfile(details = {}) {
+    const displayName = Array.from(String(details.displayName || "").trim()).slice(0, 40).join("");
+    const avatarPreset = String(details.avatarPreset || "");
+    if (!displayName) throw new Error("昵称不能为空");
+    if (!["indigo", "emerald", "rose", "amber", "slate"].includes(avatarPreset)) {
+      throw new Error("请选择有效的头像样式");
+    }
+    const profile = await authorizedRequest("/auth/me", {
+      method: "PATCH",
+      body: { displayName, avatarPreset },
+    });
+    accountStore.updateAccountProfile(profile);
+    return { profile, state: publish({ message: "账户资料已更新", lastError: "" }) };
+  }
+
+  async function changeSyncPassword(details = {}) {
+    const currentPassword = String(details.currentPassword || "");
+    const newPassword = String(details.newPassword || "");
+    if (currentPassword.length < 8 || currentPassword.length > 128) {
+      throw new Error("当前密码格式无效");
+    }
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      throw new Error("新密码长度需要为 8 至 128 个字符");
+    }
+    return authorizedRequest("/auth/change-password", {
+      method: "POST",
+      body: { currentPassword, newPassword },
+    });
+  }
+
+  function requestSyncEmailVerification() {
+    return authorizedRequest("/auth/request-email-verification", { method: "POST" });
+  }
+
+  async function verifySyncEmail(details = {}) {
+    const code = String(details.code || "").trim();
+    if (!/^\d{6}$/.test(code)) throw new Error("请输入六位邮箱验证码");
+    const profile = await authorizedRequest("/auth/verify-email", {
+      method: "POST",
+      body: { code },
+    });
+    accountStore.updateAccountProfile(profile);
+    return { profile, state: publish({ message: "邮箱验证成功", lastError: "" }) };
+  }
+
+  async function requestSyncPasswordReset(details = {}) {
+    const email = String(details.email || "").trim().toLowerCase();
+    if (!email || !email.includes("@") || email.length > 254) {
+      throw new Error("请输入有效的邮箱地址");
+    }
+    const serverUrl = accountStore.normalizeServerUrl(details.serverUrl);
+    return request(serverUrl, "/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+    });
+  }
+
+  async function detachLocalSyncAccount(message) {
+    clearSchedule();
+    accessToken = "";
+    accessTokenExpiresAt = 0;
+    refreshPromise = null;
+    accountStore.clearSyncAccount();
+    outbox.clearSyncOutbox();
+    todoStore.resetTodoSyncState();
+    notifyTodoDataChanged();
+    return publish({
+      phase: "disabled",
+      message,
+      lastError: "",
+      nextRetryAt: "",
+      manual: true,
+    });
+  }
+
+  async function resetSyncPassword(details = {}) {
+    const email = String(details.email || "").trim().toLowerCase();
+    const code = String(details.code || "").trim();
+    const newPassword = String(details.newPassword || "");
+    if (!email || !email.includes("@") || email.length > 254) {
+      throw new Error("请输入有效的邮箱地址");
+    }
+    if (!/^\d{6}$/.test(code)) throw new Error("请输入六位邮箱验证码");
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      throw new Error("新密码长度需要为 8 至 128 个字符");
+    }
+    const accountBeforeReset = accountStore.getSyncAccount();
+    const serverUrl = accountStore.normalizeServerUrl(details.serverUrl || accountBeforeReset.serverUrl);
+    const result = await request(serverUrl, "/auth/reset-password", {
+      method: "POST",
+      body: { email, code, newPassword },
+    });
+    if (accountBeforeReset.enabled && accountBeforeReset.email === email) {
+      if (currentSync) await currentSync;
+      await detachLocalSyncAccount("密码已重置，请使用新密码重新登录");
+    }
+    return result;
+  }
+
+  async function logoutSyncAccount() {
+    if (currentSync) await currentSync;
+    await authorizedRequest("/auth/logout", { method: "POST" });
+    return detachLocalSyncAccount("已退出同步账户，本地待办已保留");
+  }
+
+  async function logoutOtherSyncDevices() {
+    const result = await authorizedRequest("/auth/logout-other-devices", { method: "POST" });
+    publish({ message: "其他设备已退出登录", lastError: "" });
+    return result;
+  }
+
+  async function deleteSyncAccount(details = {}) {
+    const password = String(details.password || "");
+    if (password.length < 8 || password.length > 128) throw new Error("请输入当前账户密码");
+    if (currentSync) await currentSync;
+    await authorizedRequest("/auth/me", { method: "DELETE", body: { password } });
+    return detachLocalSyncAccount("云端账户已注销，本机待办已保留");
   }
 
   async function createPairingSession(details = {}) {
@@ -647,19 +895,34 @@ function createSyncManager(options = {}) {
   }
 
   return {
+    bindSyncEmail,
     captureTodoMutation,
+    changeSyncPassword,
     createPairingSession,
+    deleteSyncAccount,
     enableSync,
     getPairingSessionStatus,
+    getSyncAccountProfile,
+    getMembershipState,
     getSyncConflicts,
     getSyncState: getState,
     listSyncDevices,
+    loginEmailAccount,
+    logoutOtherSyncDevices,
+    logoutSyncAccount,
+    requestRegistrationCode,
+    requestSyncEmailVerification,
+    requestSyncPasswordReset,
     recoverSyncAccount,
+    registerEmailAccount,
+    resetSyncPassword,
     resolveSyncConflict,
     revokeSyncDevice,
     startSyncManager,
     stopSyncManager,
     syncNow,
+    updateSyncAccountProfile,
+    verifySyncEmail,
   };
 }
 

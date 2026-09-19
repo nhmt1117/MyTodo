@@ -552,6 +552,21 @@ function setTodoCloudState(entityId, revision, syncState = "synced") {
   return cloneTodo(target);
 }
 
+function resetTodoSyncState() {
+  assertTodoStorageWritable();
+  const visibleTodos = todoData.filter((item) => !item.deletedAt);
+  const changedCount = todoData.length - visibleTodos.length + visibleTodos.filter(
+    (item) => item.cloudRevision !== 0 || item.syncState !== "local",
+  ).length;
+  todoData = visibleTodos.map((item) => ({
+    ...item,
+    cloudRevision: 0,
+    syncState: "local",
+  }));
+  saveTodoFile();
+  return changedCount;
+}
+
 function prepareTodoConflictResolution(entityId, revision, patch = {}, options = {}) {
   const target = todoData.find((item) => item.uuid === String(entityId || "").toLowerCase());
   if (!target) return null;
@@ -622,6 +637,7 @@ module.exports = {
   markRemindersSent,
   muteTodoRemind,
   prepareTodoConflictResolution,
+  resetTodoSyncState,
   restoreTodoList,
   saveTodoFile,
   setArchived,

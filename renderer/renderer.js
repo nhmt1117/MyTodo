@@ -198,6 +198,7 @@ function setPage(pageName) {
   closeDropMenu();
   if (pageName === "home") renderHome();
   if (pageName === "calendar") renderCalendar();
+  if (pageName === "account" && window.accountUI) window.accountUI.refresh();
   const scrollTarget = document.querySelector("#" + pageName + " .page-scroll, #" + pageName + " .agenda-list");
   setBackTopTarget(scrollTarget);
 }
@@ -880,6 +881,7 @@ function renderSyncState(nextState, announce) {
   if (!nextState || typeof nextState !== "object") return;
   const previousPhase = syncState?.phase;
   syncState = { ...nextState };
+  if (window.accountUI) window.accountUI.setSyncState(syncState);
   const account = syncState.account || {};
   const enabled = account.enabled === true;
   const phase = syncState.phase || (enabled ? "idle" : "disabled");
@@ -1733,7 +1735,9 @@ function bindWindowEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (!$("#restoreDataModal").classList.contains("hidden")) {
+      if (window.accountUI?.isModalOpen()) {
+        window.accountUI.closeModal();
+      } else if (!$("#restoreDataModal").classList.contains("hidden")) {
         closeRestoreDataModal();
       } else if (!$("#syncConflictModal").classList.contains("hidden")) {
         closeConflictModal();
@@ -1808,6 +1812,14 @@ async function initApp() {
   renderSyncState(initialSyncState, false);
   renderUpdateState(initialUpdateState, false);
   await refreshTodoData();
+  if (window.accountUI) {
+    await window.accountUI.initialize({
+      initialSyncState,
+      setPage,
+      showToast,
+      getTodoStats: () => ({ completed: todoList.filter((item) => item.archived).length }),
+    });
+  }
   setPage("home");
 }
 

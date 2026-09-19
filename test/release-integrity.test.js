@@ -164,11 +164,32 @@ test("task deletion requires an explicit confirmation dialog", () => {
   assert.match(renderer, /async function confirmDelete\(\)[\s\S]*?electronAPI\.deleteTodo\(deleteTargetId\)/);
 });
 
-test("unfinished floating-word entry stays out of the 2.0 navigation", () => {
+test("navigation keeps unfinished floating-word entry hidden and exposes the account center", () => {
   const index = read("index.html");
   assert.doesNotMatch(index, /openFloat|toggleFloatWin|单词悬浮/);
   assert.equal((index.match(/data-page="setting"/g) || []).length, 1);
-  assert.match(index, /class="nav-item bottom-nav-item" data-page="setting"/);
+  assert.match(index, /data-page="calendar"[\s\S]*?data-page="setting"/);
+  assert.match(index, /class="nav-item bottom-nav-item account-nav-button"[\s\S]*?data-page="account"/);
+});
+
+test("account UI loads as a module and keeps registration fields in the approved order", () => {
+  const index = read("index.html");
+  const accountRenderer = read("renderer/account.js");
+  assert.match(index, /renderer\/account\.js/);
+  assert.match(index, /id="accountAuthModal"/);
+  assert.match(accountRenderer, /accountRegisterEmail[\s\S]*?accountRegisterPassword[\s\S]*?accountRegisterConfirm[\s\S]*?accountRegisterCode[\s\S]*?accountRegisterAgreement/);
+  assert.match(accountRenderer, /registerSyncAccount/);
+  assert.match(accountRenderer, /requestSyncRegistrationCode/);
+  assert.match(accountRenderer, /requestSyncEmailVerification/);
+  assert.match(accountRenderer, /verifySyncEmail/);
+  assert.match(accountRenderer, /data-agreement="terms"/);
+  assert.match(accountRenderer, /data-agreement="privacy"/);
+  assert.match(accountRenderer, /updateSyncAccountProfile/);
+  assert.match(accountRenderer, /logoutOtherSyncDevices/);
+  assert.match(accountRenderer, /deleteSyncAccount/);
+  assert.match(index, /id="accountLegalModal"/);
+  assert.ok(fs.existsSync(path.join(root, "USER_AGREEMENT.md")));
+  assert.ok(fs.existsSync(path.join(root, "PRIVACY_POLICY.md")));
 });
 
 test("calendar interactions reuse in-memory tasks without an async reload", () => {
