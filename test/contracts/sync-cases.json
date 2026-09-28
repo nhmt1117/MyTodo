@@ -1,0 +1,29 @@
+[
+  {
+    "name": "新任务使用零版本上传",
+    "localRevision": 0,
+    "operation": "upsert",
+    "expected": "applied"
+  },
+  {
+    "name": "相同修订版本可更新",
+    "localRevision": 3,
+    "serverRevision": 3,
+    "operation": "upsert",
+    "expected": "applied"
+  },
+  {
+    "name": "服务端版本领先时保留冲突",
+    "localRevision": 3,
+    "serverRevision": 4,
+    "operation": "upsert",
+    "expected": "conflict",
+    "errorCode": "REVISION_CONFLICT"
+  },
+  {
+    "name": "未上传的新任务本地删除后不发送变更",
+    "localRevision": 0,
+    "operation": "delete",
+    "expected": "drop-local-mutation"
+  }
+]

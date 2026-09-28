@@ -2,6 +2,7 @@ const os = require("node:os");
 const { safeStorage } = require("electron");
 const { getDataFilePath } = require("./dataLocation");
 const { readJsonWithBackup, writeJsonAtomic } = require("./storage");
+const { normalizeLimits } = require("../shared/membershipLimits");
 
 const ACCOUNT_SCHEMA_VERSION = 4;
 const DEFAULT_SERVER_URL = "http://127.0.0.1:3100/api/v1";
@@ -90,6 +91,12 @@ function normalizeAccount(value = {}) {
         status: String(source.membership.status || "ACTIVE").slice(0, 40),
         confirmedAt: String(source.membership.confirmedAt || ""),
         expiresAt: source.membership.expiresAt ? String(source.membership.expiresAt) : null,
+        limits: normalizeLimits(source.membership.limits),
+        baseLimits: normalizeLimits(source.membership.baseLimits),
+        limitsByPlatform: Object.fromEntries(["WINDOWS", "MACOS", "WEB", "ANDROID", "IOS"].map((platform) => {
+          const limit = source.membership.limitsByPlatform?.[platform];
+          return [platform, Number.isInteger(limit) && limit > 0 && limit <= 20 ? limit : 1];
+        })),
         entitlements: Array.isArray(source.membership.entitlements)
           ? source.membership.entitlements.slice(0, 100).map((entry) => ({
             code: String(entry?.code || "").slice(0, 80),
@@ -267,6 +274,9 @@ function updateMembership(details = {}) {
       confirmedAt: details.confirmedAt,
       expiresAt: details.expiresAt,
       entitlements: details.entitlements,
+      limits: details.limits,
+      baseLimits: details.baseLimits,
+      limitsByPlatform: details.limitsByPlatform,
     },
   }).membership;
   saveSyncAccount();

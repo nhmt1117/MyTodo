@@ -99,7 +99,7 @@
   function normalizeReminderOffsets(value) {
     if (!Array.isArray(value)) return [];
     return [...new Set(value.map(Number).filter((offset) => {
-      return Number.isInteger(offset) && offset >= 0 && offset <= 30 * 24 * 60;
+      return Number.isInteger(offset) && offset >= 0 && offset <= 365 * 24 * 60;
     }))].sort((left, right) => right - left);
   }
 

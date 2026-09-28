@@ -1,5 +1,7 @@
 # 架构说明
 
+会员额度由 `src/shared/membershipLimits.js` 解析，`syncAccount` 缓存服务端权益，`syncManager` 在同步前刷新，`todoStore` 通过提供函数读取，避免本地操作依赖网络。
+
 Electron 主进程负责窗口、托盘、存储、提醒、安装更新和同步；渲染进程通过 preload 暴露的受控 IPC 调用能力，不能直接访问 Node.js。
 
 主要边界：
@@ -14,3 +16,5 @@ Electron 主进程负责窗口、托盘、存储、提醒、安装更新和同�
 - `src/main/windows.js`：主窗、提醒窗、托盘和退出生命周期。
 
 本地任务与提醒不能依赖网络成功。跨端字段与规则以 MyTodo-Contracts 为准。
+
+游标过期时，主进程先将云端快照与本地任务合并，保留待上传或冲突任务，并在任务文件落盘后推进游标；快照失败不会清空离线队列。

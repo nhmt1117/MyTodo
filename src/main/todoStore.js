@@ -8,6 +8,13 @@ const {
   parseLocalDate,
 } = require("../shared/recurrence");
 const { readJsonWithBackup, writeJsonAtomic } = require("./storage");
+const FREE_LIMITS = require("../shared/freeLimits");
+const { membershipLimits } = require("../shared/membershipLimits");
+let membershipProvider = () => null;
+function setMembershipProvider(provider) { membershipProvider = provider; }
+function currentLimits() {
+  try { return membershipLimits(membershipProvider()); } catch { return FREE_LIMITS; }
+}
 
 let todoData = [];
 let nextId = 1;
@@ -20,6 +27,7 @@ const TITLE_MAX_LENGTH = 80;
 const DESCRIPTION_MAX_LENGTH = 500;
 const REMINDER_HISTORY_LIMIT = 200;
 const syncStateValues = new Set(["local", "pending", "synced", "conflict"]);
+const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
 
 function getTodoFilePath() {
   return getDataFilePath("todo-store.json");
@@ -101,6 +109,12 @@ function normalizeTodoItem(item = {}, now = new Date()) {
     text: limitText(source.text, TITLE_MAX_LENGTH).trim(),
     desc: limitText(source.desc, DESCRIPTION_MAX_LENGTH),
     date: sourceDate || (isCycle ? createdDate : ""),
+    timezone: typeof source.timezone === "string" && source.timezone.trim()
+      ? source.timezone.slice(0, 64)
+      : defaultTimezone,
+    recurrenceStartDate: isCycle
+      ? normalizeDate(source.recurrenceStartDate) || sourceDate || createdDate
+      : "",
     dueTime,
     remindTime: dueTime,
     priority: normalizePriority(source.priority),
@@ -111,6 +125,9 @@ function normalizeTodoItem(item = {}, now = new Date()) {
     isCycle,
     cycleType: isCycle ? normalizeCycleType(source.cycleType) : "",
     archived: !!source.archived,
+    completedAt: source.archived
+      ? normalizeOptionalTimestamp(source.completedAt) || normalizeTimestamp(source.updatedAt, createdAt)
+      : "",
     deletedAt: normalizeOptionalTimestamp(source.deletedAt),
     cloudRevision,
     syncState: syncStateValues.has(source.syncState)
@@ -282,6 +299,9 @@ function addTodoItem(payload = {}) {
   assertTodoStorageWritable();
   const text = limitText(payload.text, TITLE_MAX_LENGTH).trim();
   if (!text) return null;
+  if (activeTodoCount() >= currentLimits().activeTodos) {
+    throw new Error(`当前方案未完成待办最多 ${currentLimits().activeTodos} 条`);
+  }
 
   const now = new Date();
   const newItem = normalizeTodoItem(
@@ -354,7 +374,19 @@ function updateTodo(payload = {}) {
   if (idx === -1 || todoData[idx].deletedAt) return undefined;
 
   const patch = buildTodoPatch(payload);
+  const newlyCompleted = patch.archived === true && !todoData[idx].archived;
   if ("text" in patch && !patch.text) return cloneTodo(todoData[idx]);
+  if ("date" in patch && todoData[idx].isCycle) {
+    patch.recurrenceStartDate = patch.date;
+  }
+  if (patch.isCycle === true && !todoData[idx].isCycle) {
+    patch.recurrenceStartDate = patch.date || todoData[idx].date;
+  }
+  if (patch.isCycle === false) patch.recurrenceStartDate = "";
+  if (patch.archived === false && todoData[idx].archived &&
+      activeTodoCount() >= currentLimits().activeTodos) {
+    throw new Error(`当前方案未完成待办最多 ${currentLimits().activeTodos} 条`);
+  }
 
   const reminderChanged = [
     "date",
@@ -364,7 +396,12 @@ function updateTodo(payload = {}) {
     "customReminderOffsets",
     "cycleType",
     "isCycle",
-  ].some((field) => hasPatchChanged(todoData[idx], patch, field));
+  ].some((field) => hasPatchChanged(todoData[idx], patch, field)) ||
+    (hasPatchChanged(todoData[idx], patch, "priority") &&
+      (todoData[idx].reminderMode === "auto" || (patch.reminderMode ?? todoData[idx].reminderMode) === "auto"));
+  if ("archived" in patch && patch.archived !== todoData[idx].archived) {
+    patch.completedAt = patch.archived ? new Date().toISOString() : "";
+  }
   todoData[idx] = {
     ...todoData[idx],
     ...patch,
@@ -375,15 +412,36 @@ function updateTodo(payload = {}) {
     snoozedReminderKey: reminderChanged ? "" : todoData[idx].snoozedReminderKey,
     snoozedUntil: reminderChanged ? "" : todoData[idx].snoozedUntil,
   };
+  const updatedItem = todoData[idx];
   saveTodoFile();
-  emitTodoMutation("upsert", todoData[idx]);
-  return cloneTodo(todoData[idx]);
+  emitTodoMutation("upsert", updatedItem);
+  if (newlyCompleted && !updatedItem.deletedAt) trimCompletedTodos();
+  return cloneTodo(updatedItem);
+}
+
+function activeTodoCount() {
+  return todoData.filter((item) => !item.deletedAt && !item.archived).length;
+}
+
+function trimCompletedTodos() {
+  const completed = todoData.filter((item) => !item.deletedAt && item.archived);
+  if (completed.length <= currentLimits().completedTodos) return;
+  completed.sort((a, b) =>
+    a.completedAt.localeCompare(b.completedAt) || a.id - b.id);
+  for (const item of completed.slice(0, 1)) {
+    deleteTodo(item.id);
+  }
 }
 
 function setArchived(id, archived) {
   const target = todoData.find((item) => item.id === Number(id) && !item.deletedAt);
   if (target) {
     assertTodoStorageWritable();
+    const newlyCompleted = !!archived && !target.archived;
+    if (!archived && target.archived && activeTodoCount() >= currentLimits().activeTodos) {
+      throw new Error(`当前方案未完成待办最多 ${currentLimits().activeTodos} 条`);
+    }
+    if (target.archived !== !!archived) target.completedAt = archived ? new Date().toISOString() : "";
     target.archived = !!archived;
     if (target.archived) {
       target.snoozedReminderKey = "";
@@ -393,6 +451,7 @@ function setArchived(id, archived) {
     target.syncState = target.cloudRevision > 0 ? "pending" : "local";
     saveTodoFile();
     emitTodoMutation("upsert", target);
+    if (newlyCompleted) trimCompletedTodos();
   }
   return target ? cloneTodo(target) : undefined;
 }
@@ -490,6 +549,37 @@ function cloudCycleType(payload) {
   return normalizeCycleType(rule.type || rule.frequency || rule.cycleType) || "daily";
 }
 
+function cloudTodoItem(uuid, payload, revision, existing, id) {
+  const due = cloudDateParts(payload.dueAt);
+  const isCycle = !!payload.isRecurring;
+  return normalizeTodoItem({
+    ...(existing || {}),
+    id,
+    uuid,
+    text: payload.title,
+    desc: payload.description,
+    date: due.date,
+    timezone: payload.timezone,
+    recurrenceStartDate: payload.recurrenceRule?.startDate,
+    dueTime: due.time,
+    priority: payload.priority,
+    remind: !!payload.reminderEnabled,
+    reminderMode: payload.reminderMode,
+    customReminderOffsets: payload.customReminderOffsets,
+    muteRemind: !!payload.muteRemind,
+    isCycle,
+    cycleType: cloudCycleType(payload),
+    archived: !!(payload.completedAt || payload.archivedAt),
+    completedAt: payload.completedAt || payload.archivedAt || "",
+    deletedAt: "",
+    cloudRevision: revision,
+    syncState: "synced",
+    createdAt: payload.createdAt || existing?.createdAt,
+    updatedAt: payload.updatedAt || existing?.updatedAt,
+    snoozedUntil: payload.snoozedUntil || "",
+  });
+}
+
 function applyCloudTodo(entityId, payload = {}, revision = 0, operation = "upsert") {
   assertTodoStorageWritable();
   const uuid = normalizeUuid(entityId);
@@ -506,32 +596,8 @@ function applyCloudTodo(entityId, payload = {}, revision = 0, operation = "upser
     return cloneTodo(todoData[index]);
   }
 
-  const due = cloudDateParts(payload.dueAt);
   const existing = index >= 0 ? todoData[index] : null;
-  const isCycle = !!payload.isRecurring;
-  const nextItem = normalizeTodoItem({
-    ...(existing || {}),
-    id: existing ? existing.id : nextId,
-    uuid,
-    text: payload.title,
-    desc: payload.description,
-    date: due.date,
-    dueTime: due.time,
-    priority: payload.priority,
-    remind: !!payload.reminderEnabled,
-    reminderMode: payload.reminderMode,
-    customReminderOffsets: payload.customReminderOffsets,
-    muteRemind: !!payload.muteRemind,
-    isCycle,
-    cycleType: cloudCycleType(payload),
-    archived: !!(payload.completedAt || payload.archivedAt),
-    deletedAt: "",
-    cloudRevision,
-    syncState: "synced",
-    createdAt: payload.createdAt || existing?.createdAt,
-    updatedAt: payload.updatedAt || existing?.updatedAt,
-    snoozedUntil: payload.snoozedUntil || "",
-  });
+  const nextItem = cloudTodoItem(uuid, payload, cloudRevision, existing, existing ? existing.id : nextId);
 
   if (index >= 0) todoData[index] = nextItem;
   else {
@@ -540,6 +606,52 @@ function applyCloudTodo(entityId, payload = {}, revision = 0, operation = "upser
   }
   saveTodoFile();
   return cloneTodo(nextItem);
+}
+
+function applyCloudSnapshot(items, hasPending = () => false) {
+  assertTodoStorageWritable();
+  if (!Array.isArray(items)) throw new Error("云端快照无效");
+  const remote = new Map();
+  for (const payload of items) {
+    const uuid = String(payload?.id || "").toLowerCase();
+    const revision = Number(payload?.revision);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uuid) ||
+        !Number.isInteger(revision) || revision < 1 ||
+        typeof payload.title !== "string" || !payload.title.trim() ||
+        payload.deletedAt || remote.has(uuid)) {
+      throw new Error("云端快照包含无效待办");
+    }
+    remote.set(uuid, payload);
+  }
+
+  const previousData = todoData;
+  const previousNextId = nextId;
+  const now = new Date().toISOString();
+  const nextData = todoData.map((local) => {
+    const payload = remote.get(local.uuid);
+    if (payload) remote.delete(local.uuid);
+    if (hasPending(local.uuid) || local.syncState !== "synced" || local.cloudRevision === 0) {
+      return local;
+    }
+    if (payload) {
+      if (local.cloudRevision > payload.revision) return local;
+      return cloudTodoItem(local.uuid, payload, payload.revision, local, local.id);
+    }
+    return local.deletedAt ? local : { ...local, deletedAt: now, syncState: "synced" };
+  });
+  for (const [uuid, payload] of remote) {
+    nextData.push(cloudTodoItem(uuid, payload, payload.revision, null, nextId));
+    nextId += 1;
+  }
+  todoData = nextData;
+  try {
+    saveTodoFile();
+  } catch (error) {
+    todoData = previousData;
+    nextId = previousNextId;
+    throw error;
+  }
+  return nextData.length;
 }
 
 function setTodoCloudState(entityId, revision, syncState = "synced") {
@@ -626,9 +738,11 @@ function markRemindersSent(entries = []) {
 }
 
 module.exports = {
+  setMembershipProvider,
   addToToday,
   addTodoItem,
   applyCloudTodo,
+  applyCloudSnapshot,
   deleteTodo,
   getTodoList,
   getTodoSyncSnapshot,

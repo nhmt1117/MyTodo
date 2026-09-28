@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   formatLocalDate,
   getReminderCandidate,
@@ -35,6 +37,21 @@ function task(overrides = {}) {
     ...overrides,
   };
 }
+
+test("matches shared reminder cases", () => {
+  const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, "contracts/reminder-cases.json"), "utf8"));
+  const source = path.resolve(__dirname, "../../MyTodo-Contracts/fixtures/reminder-cases.json");
+  if (fs.existsSync(source)) {
+    assert.deepEqual(JSON.parse(fs.readFileSync(source, "utf8")), snapshot);
+  }
+  for (const entry of snapshot) {
+    assert.deepEqual(getReminderOffsets(task({
+      priority: entry.priority,
+      reminderMode: entry.mode,
+      customReminderOffsets: entry.customOffsets || [],
+    })), entry.expectedOffsets, entry.name);
+  }
+});
 
 test("validates local dates and reminder times", () => {
   assert.equal(parseLocalDate("2026-02-29"), null);

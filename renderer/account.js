@@ -134,9 +134,13 @@
     const enabledEntitlements = Array.isArray(cachedMembership?.entitlements)
       ? cachedMembership.entitlements.filter((entry) => entry.enabled).length
       : 0;
-    $("#accountPlanSummary").textContent = enabledEntitlements
+    const limits = cachedMembership?.limits;
+    const planSummary = enabledEntitlements
       ? `当前包含 ${enabledEntitlements} 项可用权益；基础待办与离线使用始终保留。`
       : "基础待办、本地提醒和离线使用保持可用；会员能力将在后续版本开放。";
+    $("#accountPlanSummary").textContent = limits
+      ? `${planSummary} 未完成最多 ${limits.activeTodos} 条，已完成保留最近 ${limits.completedTodos} 条；Windows 同时登录 ${cachedMembership?.limitsByPlatform?.WINDOWS ?? limits.devicesPerPlatform} 台。${cachedMembership?.expiresAt ? " 有效期至 " + formatDate(cachedMembership.expiresAt) : ""}`
+      : planSummary;
     const joined = formatDate(profile?.createdAt || currentAccount().registeredAt);
     $("#accountJoinedBadge").textContent = joined ? joined + "加入" : "";
     $("#accountVerifyAction").classList.toggle("hidden", verified);
@@ -578,6 +582,80 @@
   }
 
   function bind() {
+    async function showPlans() {
+      authHeader("会员方案", "查看权益与购买状态");
+      const content = $("#accountAuthContent");
+      const list = document.createElement("div");
+      list.className = "account-legal-content";
+      list.textContent = "正在加载方案…";
+      content.replaceChildren(list);
+      $("#accountAuthModal").classList.remove("hidden");
+      try {
+        const [plans, checkout] = await Promise.all([
+          global.electronAPI.getMembershipPlans(), global.electronAPI.getCheckoutConfig(),
+        ]);
+        list.replaceChildren();
+        const notice = document.createElement("p");
+        notice.textContent = checkout.message;
+        list.append(notice);
+        for (const plan of plans) {
+          const section = document.createElement("section");
+          const title = document.createElement("h3"); title.textContent = plan.name;
+          const price = document.createElement("p"); price.textContent = plan.code === "free" ? "免费 · 长期有效" : `¥${(plan.priceCents / 100).toFixed(2)} / ${plan.durationDays} 天`;
+          const details = document.createElement("p"); details.textContent = `未完成 ${plan.limits.activeTodos} 条 · 已完成 ${plan.limits.completedTodos} 条 · Windows ${plan.limitsByPlatform?.WINDOWS ?? 1} 台`;
+          const description = document.createElement("p"); description.textContent = plan.description || "";
+          const sync = document.createElement("p"); sync.textContent = plan.entitlements?.some((e) => e.code === "cloud_sync" && e.enabled) ? "包含云端同步" : "不包含云端同步";
+          section.append(title, price, details, description, sync);
+          if (plan.code !== "free") {
+            const buy = document.createElement("button");
+            buy.type = "button"; buy.className = "btn primary";
+            buy.textContent = checkout.checkoutAvailable ? "测试购买" : "购买暂未开放";
+            buy.disabled = !checkout.checkoutAvailable || !plan.versionId;
+            buy.addEventListener("click", async () => {
+              buy.disabled = true;
+              try {
+                const order = await global.electronAPI.createMembershipOrder(plan.versionId, crypto.randomUUID());
+                buy.textContent = "正在完成测试订单…";
+                const result = await global.electronAPI.completeSandboxOrder(order.id);
+                buy.textContent = result.status === "PAID" ? "已开通" : "订单需人工处理";
+                await refresh();
+                await showPlans();
+              } catch (error) {
+                buy.textContent = errorMessage(error);
+                buy.disabled = false;
+              }
+            });
+            section.append(buy);
+          }
+          list.append(section);
+        }
+        if (!plans.length) list.textContent = "暂无上架方案";
+        if (checkout.checkoutAvailable) {
+          const orders = await global.electronAPI.getMembershipOrders();
+          const heading = document.createElement("h3"); heading.textContent = "最近订单"; list.append(heading);
+          for (const order of orders.slice(0, 5)) {
+            const row = document.createElement("p");
+            row.textContent = `${new Date(order.createdAt).toLocaleString()} · ¥${(order.priceCents / 100).toFixed(2)} · ${order.status}`;
+            if (order.status === "PENDING") {
+              const retry = document.createElement("button");
+              retry.type = "button"; retry.className = "btn secondary"; retry.textContent = "继续测试订单";
+              retry.addEventListener("click", async () => {
+                retry.disabled = true;
+                try {
+                  await global.electronAPI.completeSandboxOrder(order.id);
+                  await refresh();
+                  await showPlans();
+                } catch (error) { row.textContent = errorMessage(error); retry.disabled = false; row.append(retry); }
+              });
+              row.append(" ", retry);
+            }
+            list.append(row);
+          }
+        }
+      } catch (error) { list.textContent = errorMessage(error); }
+    }
+    $("#accountOpenPlans")?.addEventListener("click", showPlans);
+    $("#accountBrowsePlans")?.addEventListener("click", showPlans);
     $("#openAccountLogin")?.addEventListener("click", () => openAuth("login"));
     $("#openAccountRegister")?.addEventListener("click", () => openAuth("register"));
     $("#accountVerifyEmail")?.addEventListener("click", () => openAuth("verify"));

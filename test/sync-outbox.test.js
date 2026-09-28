@@ -22,6 +22,44 @@ function loadOutbox(directory) {
   }
 }
 
+test("matches shared synchronization cases in the local outbox", (t) => {
+  const cases = JSON.parse(fs.readFileSync(path.join(__dirname, "contracts/sync-cases.json"), "utf8"));
+  const source = path.resolve(__dirname, "../../MyTodo-Contracts/fixtures/sync-cases.json");
+  if (fs.existsSync(source)) {
+    assert.deepEqual(JSON.parse(fs.readFileSync(source, "utf8")), cases);
+  }
+
+  for (const [index, entry] of cases.entries()) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-sync-case-"));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const outbox = loadOutbox(directory);
+    outbox.loadSyncOutbox();
+    const uuid = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+    if (entry.operation === "delete") {
+      outbox.enqueueTodoUpsert({ uuid, cloudRevision: 0, payload: { title: entry.name } });
+      assert.equal(outbox.enqueueTodoDelete({ uuid, cloudRevision: entry.localRevision }), null, entry.name);
+      assert.deepEqual(outbox.getPendingMutations(), [], entry.name);
+      continue;
+    }
+
+    const mutation = outbox.enqueueTodoUpsert({
+      uuid,
+      cloudRevision: entry.localRevision,
+      payload: { title: entry.name },
+    });
+    assert.equal(mutation.baseRevision, entry.localRevision, entry.name);
+    if (entry.expected === "conflict") {
+      outbox.markMutationBlocked(mutation.mutationId, entry.errorCode, {
+        id: uuid,
+        revision: entry.serverRevision,
+      });
+      assert.equal(outbox.getBlockedMutations()[0].blockedReason, entry.errorCode, entry.name);
+    } else {
+      assert.equal(outbox.getPendingMutations().length, 1, entry.name);
+    }
+  }
+});
+
 test("sync outbox persists, coalesces unattempted changes and preserves attempted mutations", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-outbox-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -106,4 +144,23 @@ test("blocked conflicts can be inspected and removed by entity", (t) => {
   assert.equal(outbox.getBlockedMutations()[0].serverEntity.title, "Cloud");
   assert.equal(outbox.removeEntityMutations(uuid), 1);
   assert.equal(outbox.getBlockedMutations().length, 0);
+});
+
+test("editing after a quota rejection replaces the blocked upload", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-outbox-quota-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const outbox = loadOutbox(directory);
+  outbox.loadSyncOutbox();
+  const uuid = "371ce7bd-e242-4cb1-a8fd-b9024bc8c582";
+  const first = outbox.enqueueTodoUpsert({
+    uuid, cloudRevision: 0, payload: { title: "Before quota" },
+  });
+  outbox.markMutationBlocked(first.mutationId, "ACTIVE_TODO_LIMIT_REACHED");
+  const retry = outbox.enqueueTodoUpsert({
+    uuid, cloudRevision: 0, payload: { title: "After freeing space" },
+  });
+  assert.notEqual(retry.mutationId, first.mutationId);
+  assert.equal(outbox.getBlockedMutations().length, 0);
+  assert.equal(outbox.getPendingMutations().length, 1);
+  assert.equal(outbox.getPendingMutations()[0].payload.title, "After freeing space");
 });

@@ -165,6 +165,16 @@ function createHarness(fetchImpl) {
       todo.cloudRevision = Number(revision);
       todo.syncState = "synced";
     },
+    applyCloudSnapshot: (todos, hasPending) => {
+      const cloud = todos.find((item) => item.id === todo.uuid);
+      if (hasPending(todo.uuid)) return;
+      if (cloud) {
+        todo.text = cloud.title;
+        todo.cloudRevision = cloud.revision;
+      } else {
+        todo.deletedAt = new Date().toISOString();
+      }
+    },
     prepareTodoConflictResolution: (_id, revision, patch) => {
       if (patch.text) todo.text = patch.text;
       if (Object.prototype.hasOwnProperty.call(patch, "desc")) todo.desc = patch.desc;
@@ -266,6 +276,47 @@ test("network failure keeps local data and queued mutations", async () => {
   assert.equal(result.phase, "offline");
   assert.equal(harness.todo.text, "Existing task");
   assert.equal(harness.items.length, 1);
+});
+
+test("expired cursor recovers snapshot before retrying queued upload", async () => {
+  const calls = [];
+  let rejected = false;
+  const harness = createHarness(async (url, options) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, body });
+    if (url.endsWith("/auth/refresh")) {
+      return jsonResponse({ accessToken: "token", refreshToken: "new-token",
+        accessTokenExpiresInSeconds: 900 });
+    }
+    if (url.endsWith("/sync/push")) {
+      if (!rejected) {
+        rejected = true;
+        return jsonResponse({ code: "SYNC_RESET_REQUIRED", message: "reset" }, 409);
+      }
+      assert.equal(body.cursor, "12");
+      assert.equal(harness.todo.text, "Existing task");
+      return jsonResponse({ results: [{ mutationId: body.mutations[0].mutationId,
+        status: "applied", appliedRevision: 3 }] });
+    }
+    if (url.endsWith("/sync/snapshot")) {
+      assert.equal(harness.items.length, 1);
+      return jsonResponse({ cursor: "12", todos: [{ id: harness.todo.uuid,
+        title: "Cloud title", revision: 2 }] });
+    }
+    if (url.includes("/sync/pull")) {
+      return jsonResponse({ changes: [], nextCursor: "12", hasMore: false });
+    }
+    throw new Error("Unexpected request " + url);
+  });
+  Object.assign(harness.account, { enabled: true, userId: "976561b7-a599-4b2d-b753-7e9325042881",
+    deviceId: "f8978649-403b-4105-8121-b4d42ac743f7" });
+  harness.setRefreshToken("refresh-token");
+  harness.manager.captureTodoMutation("upsert", harness.todo);
+  const result = await harness.manager.syncNow({ manual: true });
+  assert.notEqual(result.phase, "offline");
+  assert.equal(harness.account.cursor, "12");
+  assert.equal(harness.items.length, 0);
+  assert.ok(calls.some((call) => call.url.endsWith("/sync/snapshot")));
 });
 
 test("email account APIs keep passwords ephemeral and logout preserves local tasks", async () => {

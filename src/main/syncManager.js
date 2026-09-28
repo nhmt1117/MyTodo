@@ -30,14 +30,14 @@ function buildTodoSyncPayload(todo = {}) {
     title: String(todo.text || ""),
     description: String(todo.desc || ""),
     dueAt: localDueAt(todo),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
+    timezone: todo.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
     priority: ["low", "mid", "high"].includes(todo.priority) ? todo.priority : "mid",
     isRecurring: !!todo.isCycle,
     recurrenceRule: todo.isCycle
-      ? { type: todo.cycleType || "daily", startDate: todo.date || "" }
+      ? { type: todo.cycleType || "daily", startDate: todo.recurrenceStartDate || todo.date || "" }
       : null,
-    completedAt: todo.archived ? updatedAt : null,
-    archivedAt: todo.archived ? updatedAt : null,
+    completedAt: todo.archived ? (todo.completedAt || updatedAt) : null,
+    archivedAt: todo.archived ? (todo.completedAt || updatedAt) : null,
     reminderEnabled: !!todo.remind,
     reminderMode: todo.reminderMode || "auto",
     customReminderOffsets: Array.isArray(todo.customReminderOffsets)
@@ -63,6 +63,7 @@ function createSyncManager(options = {}) {
   const clearTimer = options.clearTimeout || clearTimeout;
   const requestTimeoutMs = Number(options.requestTimeoutMs) || REQUEST_TIMEOUT_MS;
   const qrEncoder = options.qrEncoder || QRCode;
+  todoStore.setMembershipProvider?.(() => accountStore.getSyncAccount().membership);
 
   let started = false;
   let timer = null;
@@ -719,8 +720,23 @@ function createSyncManager(options = {}) {
     return selected;
   }
 
+  function requiresSyncReset(error) {
+    return error?.status === 409 && error?.responseBody?.code === "SYNC_RESET_REQUIRED";
+  }
+
+  async function recoverSnapshot() {
+    const snapshot = await authorizedRequest("/sync/snapshot");
+    if (!/^\d+$/.test(String(snapshot?.cursor || "")) || !Array.isArray(snapshot?.todos)) {
+      throw new Error("同步服务返回的任务快照无效");
+    }
+    todoStore.applyCloudSnapshot(snapshot.todos, (entityId) => outbox.hasPendingForEntity(entityId));
+    accountStore.updateSyncCursor(snapshot.cursor);
+    notifyTodoDataChanged();
+  }
+
   async function pushChanges() {
     let changed = false;
+    let resets = 0;
     for (let pass = 0; pass < 100; pass += 1) {
       const mutations = mutationBatch();
       if (!mutations.length) break;
@@ -731,11 +747,18 @@ function createSyncManager(options = {}) {
         response = await authorizedRequest("/sync/push", {
           method: "POST",
           body: {
+            cursor: accountStore.getSyncAccount().cursor,
             mutations: mutations.map(({ createdAt, attemptCount, lastAttemptAt, lastError,
               blockedReason, serverEntity, ...mutation }) => mutation),
           },
         });
       } catch (error) {
+        if (requiresSyncReset(error) && resets < 2) {
+          resets += 1;
+          await recoverSnapshot();
+          changed = true;
+          continue;
+        }
         for (const mutation of mutations) {
           outbox.setMutationError(mutation.mutationId, errorMessage(error));
         }
@@ -775,11 +798,23 @@ function createSyncManager(options = {}) {
 
   async function pullChanges() {
     let changed = false;
+    let resets = 0;
     for (let page = 0; page < 1_000; page += 1) {
       const account = accountStore.getSyncAccount();
-      const response = await authorizedRequest(
-        `/sync/pull?cursor=${encodeURIComponent(account.cursor)}&limit=100`,
-      );
+      let response;
+      try {
+        response = await authorizedRequest(
+          `/sync/pull?cursor=${encodeURIComponent(account.cursor)}&limit=100`,
+        );
+      } catch (error) {
+        if (requiresSyncReset(error) && resets < 2) {
+          resets += 1;
+          await recoverSnapshot();
+          changed = true;
+          continue;
+        }
+        throw error;
+      }
       const changes = Array.isArray(response?.changes) ? response.changes : [];
       for (const change of changes) {
         const local = todoStore.getTodoSyncSnapshot()
@@ -830,17 +865,23 @@ function createSyncManager(options = {}) {
       manual,
     });
     try {
+      await getMembershipState().catch(() => null);
       const pushed = await pushChanges();
       const pulled = await pullChanges();
       if (pushed || pulled) notifyTodoDataChanged();
       failureCount = 0;
       const queue = outbox.getSyncOutboxStatus();
       const hasIssues = (queue.conflictCount || 0) + (queue.rejectedCount || 0) > 0;
+      const quotaRejected = outbox.getBlockedMutations().some(
+        (item) => item.blockedReason === "ACTIVE_TODO_LIMIT_REACHED",
+      );
       const snapshot = publish({
         phase: hasIssues ? "attention" : "idle",
         message: hasIssues ? "部分待办需要处理同步冲突" : "同步已完成",
         lastSyncAt: new Date().toISOString(),
-        lastError: "",
+        lastError: quotaRejected
+          ? "普通用户未完成待办已达上限；完成或删除其他任务后，编辑未同步任务即可重试"
+          : "",
         manual,
       });
       schedule(SUCCESS_INTERVAL_MS);
@@ -904,6 +945,13 @@ function createSyncManager(options = {}) {
     getPairingSessionStatus,
     getSyncAccountProfile,
     getMembershipState,
+    getMembershipPlans: () => authorizedRequest("/membership/plans"),
+    getCheckoutConfig: () => authorizedRequest("/membership/checkout-config"),
+    getMembershipOrders: () => authorizedRequest("/membership/orders"),
+    createMembershipOrder: (versionId, requestId) => authorizedRequest("/membership/orders", {
+      method: "POST", body: { versionId, requestId },
+    }),
+    completeSandboxOrder: (id) => authorizedRequest(`/membership/orders/${encodeURIComponent(id)}/sandbox-complete`, { method: "POST" }),
     getSyncConflicts,
     getSyncState: getState,
     listSyncDevices,

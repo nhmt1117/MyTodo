@@ -140,6 +140,11 @@ function registerIpcHandlers() {
   });
   ipcMain.handle("get-sync-account-profile", async () => syncManager.getSyncAccountProfile());
   ipcMain.handle("get-membership-state", async () => syncManager.getMembershipState());
+  ipcMain.handle("get-membership-plans", async () => syncManager.getMembershipPlans());
+  ipcMain.handle("get-checkout-config", async () => syncManager.getCheckoutConfig());
+  ipcMain.handle("get-membership-orders", async () => syncManager.getMembershipOrders());
+  ipcMain.handle("create-membership-order", async (_event, versionId, requestId) => syncManager.createMembershipOrder(versionId, requestId));
+  ipcMain.handle("complete-sandbox-order", async (_event, id) => syncManager.completeSandboxOrder(id));
   ipcMain.handle("update-sync-account-profile", async (_event, options) => {
     return syncManager.updateSyncAccountProfile(options);
   });

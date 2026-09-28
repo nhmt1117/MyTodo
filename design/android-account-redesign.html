@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyTodo Android · 账户界面</title>
+  <style>
+    :root { font-family: "Microsoft YaHei", system-ui, sans-serif; color: #253142; background: #dfe5e9; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px 18px; }
+    .set { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; }
+    .phone { width: 390px; height: 844px; max-width: 100%; background: #f8fafb; border: 7px solid #29313e; border-radius: 33px; overflow: hidden; box-shadow: 0 18px 45px #25314227; position: relative; }
+    .status { height: 35px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; font-size: 12px; font-weight: 700; }
+    .content { height: calc(100% - 35px); overflow: auto; padding: 0 20px 96px; }
+    .title { font-size: 30px; font-weight: 800; margin: 28px 0 0; }
+    .sub { color: #748192; font-size: 13px; margin: 5px 0 24px; }
+    .identity { display: flex; gap: 15px; align-items: center; padding: 18px 0 22px; border-bottom: 1px solid #d9e0e5; }
+    .avatar { display: grid; place-items: center; flex: none; width: 62px; height: 62px; border-radius: 20px; color: white; background: #455268; font-size: 24px; font-weight: 700; }
+    .avatar.big { width: 96px; height: 96px; border-radius: 29px; font-size: 34px; margin: 0 auto; }
+    .name { font-size: 19px; font-weight: 750; }
+    .email { color: #748192; font-size: 12px; margin-top: 5px; }
+    .chevron { margin-left: auto; color: #8f9aa6; font-size: 26px; line-height: 1; }
+    .membership { font-size: 12px; color: #4f46e5; margin-top: 7px; font-weight: 700; }
+    .section { margin-top: 25px; }
+    .section h2 { color: #748192; font-size: 12px; font-weight: 700; margin: 0 0 8px 2px; }
+    .rows { background: #fff; border: 1px solid #e1e6ea; border-radius: 8px; padding: 0 14px; }
+    .row { min-height: 55px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #edf0f2; font-size: 14px; }
+    .row:last-child { border: 0; }
+    .glyph { width: 24px; color: #59677a; font-size: 19px; text-align: center; }
+    .value { color: #84909c; font-size: 12px; margin-left: auto; }
+    .row .chevron { font-size: 22px; margin-left: 0; }
+    .row .value + .chevron { margin-left: 0; }
+    .inline-status { color: #657486; font-size: 12px; padding: 13px 2px 0; }
+    .bottom { position: absolute; bottom: 0; left: 0; right: 0; height: 68px; background: #fff; border-top: 1px solid #e1e6ea; display: flex; align-items: center; justify-content: space-around; font-size: 12px; color: #7a8797; }
+    .nav { text-align: center; min-width: 80px; }
+    .nav b { display: block; font-size: 21px; font-weight: 500; margin-bottom: 1px; }
+    .nav.active { color: #4f46e5; font-weight: 700; }
+    .back { display: flex; align-items: center; gap: 12px; height: 52px; font-size: 17px; font-weight: 700; }
+    .back span { font-size: 24px; font-weight: 400; }
+    .profile { text-align: center; padding: 23px 0 26px; }
+    .photo-action { margin-top: 12px; font-size: 13px; color: #4f46e5; font-weight: 700; }
+    .profile-name { margin-top: 22px; font-size: 22px; font-weight: 800; }
+    .profile-mail { color: #748192; font-size: 13px; margin-top: 5px; }
+    .info { display: flex; flex-direction: column; gap: 3px; padding: 11px 0; }
+    .info small { color: #8995a2; font-size: 11px; }
+    .device { display: flex; gap: 13px; align-items: center; padding: 16px 0; border-bottom: 1px solid #edf0f2; }
+    .device:last-child { border-bottom: 0; }
+    .device-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; background: #eef1f4; color: #526277; font-size: 19px; }
+    .device small { display: block; color: #8894a1; font-size: 11px; margin-top: 4px; }
+    .current { margin-left: auto; color: #4f46e5; font-size: 11px; }
+    .leave { margin-left: auto; color: #bf4242; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="set">
+    <section class="phone"><div class="status"><span>9:41</span><span>● ▰</span></div><div class="content">
+      <h1 class="title">我的</h1><p class="sub">账户与偏好</p>
+      <div class="identity"><div class="avatar">屿</div><div><div class="name">林屿</div><div class="email">linyu@example.com</div><div class="membership">免费会员</div></div><div class="chevron">›</div></div>
+      <div class="section"><h2>设备与数据</h2><div class="rows"><div class="row"><span class="glyph">▤</span>登录设备<span class="value">2 台</span><span class="chevron">›</span></div></div></div>
+      <div class="section"><h2>提醒与同步</h2><div class="rows"><div class="row"><span class="glyph">♧</span>任务提醒<span class="value">已开启</span><span class="chevron">›</span></div><div class="row"><span class="glyph">↻</span>立即同步<span class="chevron">›</span></div><div class="row"><span class="glyph">◉</span>同步冲突<span class="value">0 项</span><span class="chevron">›</span></div></div><div class="inline-status">刚刚同步 · 本地待办可离线使用</div></div>
+      <div class="section"><div class="rows"><div class="row"><span class="glyph">⇥</span>退出登录<span class="chevron">›</span></div></div></div>
+    </div><div class="bottom"><div class="nav"><b>⌂</b>今天</div><div class="nav"><b>▦</b>日历</div><div class="nav active"><b>●</b>我的</div></div></section>
+    <section class="phone"><div class="status"><span>9:41</span><span>● ▰</span></div><div class="content">
+      <div class="back"><span>‹</span>账户中心</div>
+      <div class="profile"><div class="avatar big">屿</div><div class="photo-action">更换头像</div><div class="profile-name">林屿</div><div class="profile-mail">linyu@example.com</div></div>
+      <div class="section"><h2>个人资料</h2><div class="rows"><div class="row">昵称<span class="value">林屿</span><span class="chevron">›</span></div><div class="row">邮箱<span class="value">linyu@example.com</span></div><div class="row">手机号<span class="value">暂未绑定</span></div></div></div>
+      <div class="section"><h2>会员</h2><div class="rows"><div class="row">当前方案<span class="value">免费版</span></div></div></div>
+    </div></section>
+    <section class="phone"><div class="status"><span>9:41</span><span>● ▰</span></div><div class="content">
+      <div class="back"><span>‹</span>登录设备</div><p class="sub">管理使用此账户登录的设备</p>
+      <div class="section"><h2>设备</h2><div class="rows"><div class="device"><div class="device-icon">▯</div><div>Android 手机<small>当前设备 · 刚刚活跃</small></div><span class="current">当前</span></div><div class="device"><div class="device-icon">▣</div><div>书房电脑<small>Windows · 昨天活跃</small></div><span class="leave">退出</span></div></div></div>
+    </div></section>
+  </div>
+</body>
+</html>

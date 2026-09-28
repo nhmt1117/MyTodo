@@ -118,6 +118,8 @@ function enqueueTodoUpsert(todo) {
   if (!todo || !isUuid(todo.uuid)) throw new Error("待办缺少有效 UUID");
 
   const entityId = String(todo.uuid).toLowerCase();
+  outbox = outbox.filter((item) => item.entityId !== entityId ||
+    item.blockedReason !== "ACTIVE_TODO_LIMIT_REACHED");
   const existingIndex = outbox.findIndex(
     (item) => item.entityId === entityId && item.attemptCount === 0 && !item.blockedReason,
   );

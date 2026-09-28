@@ -1,0 +1,19 @@
+{
+  "entityId": "c8ec343c-4096-49da-adfb-c94c48599a2d",
+  "payload": {
+    "title": "跨端循环提醒验收",
+    "description": "核对任务详情和提醒字段",
+    "dueAt": "2026-10-05T01:30:00.000Z",
+    "timezone": "Asia/Shanghai",
+    "priority": "high",
+    "isRecurring": true,
+    "recurrenceRule": { "type": "weekly", "startDate": "2026-10-05" },
+    "completedAt": null,
+    "archivedAt": null,
+    "reminderEnabled": true,
+    "reminderMode": "custom",
+    "customReminderOffsets": [1440, 120, 0],
+    "muteRemind": false,
+    "snoozedUntil": "2026-10-05T00:15:00.000Z"
+  }
+}

@@ -273,6 +273,7 @@ function wait(milliseconds) {
 
 async function completeTaskWithAnimation(row, item) {
   if (row.classList.contains("is-completing")) return;
+  const completedWasFull = todoList.filter((entry) => entry.archived).length >= 500;
   const button = row.querySelector('[data-action="toggle"]');
   button.disabled = true;
   row.classList.add("is-completing");
@@ -286,6 +287,7 @@ async function completeTaskWithAnimation(row, item) {
     row.classList.add("is-leaving");
     await wait(280);
     await refreshTodoData();
+    if (completedWasFull) showToast("已完成，最早完成的一项已自动移除");
   } catch (error) {
     row.classList.remove("is-completing", "is-leaving");
     button.disabled = false;
@@ -933,7 +935,8 @@ function renderSyncState(nextState, announce) {
       : syncState.message;
   } else if (phase === "attention") {
     detail.textContent = (Number(syncState.conflictCount) || 0) + " 项冲突，" +
-      (Number(syncState.rejectedCount) || 0) + " 项未被服务接受";
+      (Number(syncState.rejectedCount) || 0) + " 项未被服务接受" +
+      (syncState.lastError ? " · " + syncState.lastError : "");
   } else {
     const lastSync = formatSyncTime(syncState.lastSyncAt);
     detail.textContent = (Number(syncState.pendingCount) || 0) + " 项等待同步" +

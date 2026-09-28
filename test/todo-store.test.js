@@ -4,6 +4,40 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
+const { buildTodoSyncPayload } = require("../src/main/syncManager");
+const FREE_LIMITS = require("../src/shared/freeLimits");
+
+test("free limits match Contracts", () => {
+  const source = path.resolve(__dirname, "../../MyTodo-Contracts/config/free-limits.json");
+  if (!fs.existsSync(source)) return;
+  const contract = JSON.parse(fs.readFileSync(source, "utf8"));
+  assert.deepEqual(FREE_LIMITS, {
+    activeTodos: contract.free.activeTodos,
+    completedTodos: contract.free.completedTodos,
+  });
+  assert.equal(contract.free.devicesPerPlatform, 1);
+});
+
+test("membership limits apply offline and downgrades never bulk-trim completed history", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-member-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = loadStore(directory); store.loadTodoFile();
+  let membership = { limits: { activeTodos: 2, completedTodos: 5 } };
+  store.setMembershipProvider(() => membership);
+  for (let i = 0; i < 4; i++) {
+    const task = store.addTodoItem({ text: `Completed ${i}` }); store.setArchived(task.id, true);
+  }
+  membership = { limits: { activeTodos: 2, completedTodos: 1 } };
+  const before = store.getTodoList().length;
+  const one = store.addTodoItem({ text: "One" }); const two = store.addTodoItem({ text: "Two" });
+  assert.throws(() => store.addTodoItem({ text: "Excess" }), /最多 2/);
+  store.setArchived(one.id, true);
+  assert.equal(store.getTodoList().length, before + 1);
+  store.setArchived(one.id, true);
+  store.updateTodo({ id: one.id, archived: true, text: "Updated" });
+  assert.equal(store.getTodoList().length, before + 1);
+  assert.ok(store.getTodoList().some((task) => task.id === two.id));
+});
 
 function loadStore(directory) {
   const modulePath = require.resolve("../src/main/todoStore");
@@ -21,6 +55,55 @@ function loadStore(directory) {
     Module._load = originalLoad;
   }
 }
+
+test("preserves the shared full todo payload through the Windows store", (t) => {
+  const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, "contracts/todo-roundtrip.json"), "utf8"));
+  const source = path.resolve(__dirname, "../../MyTodo-Contracts/fixtures/todo-roundtrip.json");
+  if (fs.existsSync(source)) {
+    assert.deepEqual(JSON.parse(fs.readFileSync(source, "utf8")), fixture);
+  }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-full-payload-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  const item = store.applyCloudTodo(fixture.entityId, fixture.payload, 3);
+  assert.equal(item.cloudRevision, 3);
+  assert.equal(item.timezone, fixture.payload.timezone);
+  assert.equal(item.recurrenceStartDate, fixture.payload.recurrenceRule.startDate);
+  assert.deepEqual(buildTodoSyncPayload(item), fixture.payload);
+});
+
+test("cloud snapshot removes missing synced tasks but preserves offline work", (t) => {
+  const cases = JSON.parse(fs.readFileSync(
+    path.resolve(__dirname, "../../MyTodo-Contracts/fixtures/sync-recovery-cases.json"), "utf8",
+  ));
+  assert.equal(cases.length, 4);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-snapshot-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  const missingId = "10000000-0000-4000-8000-000000000001";
+  const pendingId = "10000000-0000-4000-8000-000000000002";
+  const presentId = "10000000-0000-4000-8000-000000000003";
+  const newCloudId = "10000000-0000-4000-8000-000000000004";
+  store.applyCloudTodo(missingId, { title: "Deleted in cloud" }, 2);
+  store.applyCloudTodo(pendingId, { title: "Offline edit" }, 2);
+  store.setTodoCloudState(pendingId, 2, "pending");
+  store.applyCloudTodo(presentId, { title: "Old cloud title" }, 1);
+  const localOnly = store.addTodoItem({ text: "Offline new task" });
+
+  store.applyCloudSnapshot([
+    { id: pendingId, title: "Cloud version", revision: 3 },
+    { id: presentId, title: "New cloud title", revision: 2 },
+    { id: newCloudId, title: "New cloud task", revision: 1 },
+  ], (id) => id === pendingId);
+  const snapshot = store.getTodoSyncSnapshot();
+  assert.ok(snapshot.find((item) => item.uuid === missingId).deletedAt);
+  assert.equal(snapshot.find((item) => item.uuid === pendingId).text, "Offline edit");
+  assert.equal(snapshot.find((item) => item.uuid === presentId).text, "New cloud title");
+  assert.equal(snapshot.find((item) => item.uuid === newCloudId).text, "New cloud task");
+  assert.equal(snapshot.find((item) => item.id === localOnly.id).text, "Offline new task");
+});
 
 test("todo CRUD, archive, mute and reminder state persist independently", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-crud-"));
@@ -95,6 +178,52 @@ test("legacy cycles receive a stable start date and reminder time", (t) => {
   assert.equal(store.addTodoItem({ text: "Next" }).id, 8);
 });
 
+test("completion time survives edits, reloads and sync payloads", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-completed-at-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  let store = loadStore(directory);
+  store.loadTodoFile();
+  const item = store.addTodoItem({ text: "Finish me" });
+  const completed = store.setArchived(item.id, true);
+  assert.match(completed.completedAt, /^\d{4}-\d\d-\d\dT/);
+  assert.equal(store.updateTodo({ id: item.id, text: "Edited later" }).completedAt, completed.completedAt);
+  store = loadStore(directory);
+  assert.equal(store.loadTodoFile()[0].completedAt, completed.completedAt);
+  assert.equal(store.setArchived(item.id, false).completedAt, "");
+});
+
+test("free limits reject active overflow and remove the earliest completed task", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-free-limits-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const list = [
+    ...Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1, text: `Active ${index}`, archived: false,
+    })),
+    ...Array.from({ length: 500 }, (_, index) => ({
+      id: index + 101, text: `Completed ${index}`, archived: true,
+      completedAt: new Date(Date.UTC(2024, 0, 1, 0, 0, index)).toISOString(),
+      date: index === 0 ? "2030-01-01" : "2020-01-01",
+    })),
+  ];
+  fs.writeFileSync(path.join(directory, "todo-store.json"), JSON.stringify({ list, maxId: 601 }));
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  assert.throws(() => store.addTodoItem({ text: "Too many" }), /最多 100 条/);
+  assert.throws(() => store.setArchived(101, false), /最多 100 条/);
+  const finished = store.setArchived(1, true);
+  assert.ok(finished.completedAt);
+  const visible = store.getTodoList();
+  assert.equal(visible.filter((todo) => todo.archived).length, 500);
+  assert.equal(visible.some((todo) => todo.id === 101), false);
+  assert.equal(visible.some((todo) => todo.id === 102), true);
+  assert.equal(visible.some((todo) => todo.id === 1), true);
+  const later = store.addTodoItem({ text: "Later completion" });
+  const edited = store.updateTodo({ id: later.id, archived: true });
+  assert.equal(edited.id, later.id);
+  assert.equal(edited.archived, true);
+  assert.equal(store.getTodoList().some((todo) => todo.id === 102), false);
+});
+
 test("snooze supports a next-morning delay up to 48 hours", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-snooze-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -119,6 +248,29 @@ test("snooze supports a next-morning delay up to 48 hours", (t) => {
   assert.equal(store.snoozeTodoReminder(item.id, key, 48 * 60 + 1), undefined);
   const persisted = JSON.parse(fs.readFileSync(path.join(directory, "todo-store.json"), "utf8"));
   assert.equal(persisted.schemaVersion, 3);
+});
+
+test("text edits preserve snooze while automatic priority changes reset it", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mytodo-snooze-edit-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = loadStore(directory);
+  store.loadTodoFile();
+  const item = store.addTodoItem({
+    text: "Initial",
+    date: "2026-10-05",
+    dueTime: "09:00",
+    priority: "mid",
+    remind: true,
+    reminderMode: "auto",
+  });
+  const snoozed = store.snoozeTodoReminder(
+    item.id,
+    "once:2026-10-05:09:00:0",
+    15,
+    new Date("2026-10-05T00:00:00.000Z"),
+  ).snoozedUntil;
+  assert.equal(store.updateTodo({ id: item.id, text: "Edited" }).snoozedUntil, snoozed);
+  assert.equal(store.updateTodo({ id: item.id, priority: "high" }).snoozedUntil, "");
 });
 
 test("synced deletions keep a hidden tombstone for cloud propagation", (t) => {
